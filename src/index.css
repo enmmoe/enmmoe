@@ -1,0 +1,239 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --ios-bg: #FFFFFF;
+    --ios-surface: #F2F2F7;
+    --ios-surface-elevated: #FFFFFF;
+    --ios-surface-pressed: #E5E5EA;
+    --ios-text: #000000;
+    --ios-text-secondary: #8E8E93;
+    --ios-text-tertiary: #AEAEB2;
+    --ios-border: rgba(0, 0, 0, 0.08);
+    --ios-separator: rgba(60, 60, 67, 0.12);
+    --ios-blue: #007AFF;
+    --ios-blue-hover: #0066D6;
+    --ios-blue-soft: rgba(0, 122, 255, 0.1);
+    --font-sf: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  }
+
+  .dark {
+    --ios-bg: #000000;
+    --ios-surface: #1C1C1E;
+    --ios-surface-elevated: #2C2C2E;
+    --ios-surface-pressed: #3A3A3C;
+    --ios-text: #FFFFFF;
+    --ios-text-secondary: #8E8E93;
+    --ios-text-tertiary: #636366;
+    --ios-border: rgba(255, 255, 255, 0.1);
+    --ios-separator: rgba(255, 255, 255, 0.12);
+    --ios-blue: #0A84FF;
+    --ios-blue-hover: #2E96FF;
+    --ios-blue-soft: rgba(10, 132, 255, 0.16);
+  }
+
+  html,
+  body,
+  #root {
+    background-color: var(--ios-bg);
+    color: var(--ios-text);
+    font-family: var(--font-sf);
+    font-size: 17px;
+    font-weight: 400;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  *,
+  ::before,
+  ::after {
+    font-family: var(--font-sf);
+    box-sizing: border-box;
+  }
+
+  /* iOS Typography Scale */
+  h1 {
+    font-weight: 700;
+    letter-spacing: -0.025em;
+  }
+
+  h2 {
+    font-weight: 600;
+    letter-spacing: -0.018em;
+  }
+
+  h3,
+  h4 {
+    font-weight: 600;
+    letter-spacing: -0.012em;
+  }
+
+  /* Accessible keyboard focus ring */
+  :focus-visible {
+    outline: 2px solid var(--ios-blue);
+    outline-offset: 2px;
+  }
+
+  input:focus-visible,
+  textarea:focus-visible {
+    outline: none;
+  }
+}
+
+/* Utilities */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Subtle custom scrollbars on desktop only */
+@media (min-width: 768px) {
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(142, 142, 147, 0.28);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(142, 142, 147, 0.48);
+  }
+}
+
+/* Safe area insets */
+.pb-safe {
+  padding-bottom: max(12px, env(safe-area-inset-bottom, 12px));
+}
+
+.pt-safe {
+  padding-top: max(8px, env(safe-area-inset-top, 8px));
+}
+
+/* Tactile iOS press & transitions */
+.ios-press {
+  transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1), opacity 160ms ease, background-color 160ms ease;
+}
+
+.ios-press:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.active-press {
+  transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.active-press:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* Shimmer loading animation */
+@keyframes ios-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.ios-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--ios-surface) 25%,
+    var(--ios-surface-pressed) 50%,
+    var(--ios-surface) 75%
+  );
+  background-size: 200% 100%;
+  animation: ios-shimmer 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ios-skeleton {
+    animation: none;
+  }
+  .ios-press,
+  .active-press {
+    transition: none;
+  }
+  .ios-press:active:not(:disabled),
+  .active-press:active:not(:disabled) {
+    transform: none;
+  }
+}
+
+/* Apple Typographic Hierarchy Helpers */
+.ios-large-title {
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+}
+
+.ios-page-title {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.18;
+  letter-spacing: -0.022em;
+}
+
+.ios-section-heading {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.22;
+  letter-spacing: -0.018em;
+}
+
+.ios-card-title {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.014em;
+}
+
+.ios-body {
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.ios-secondary {
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.ios-button-text {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.ios-caption {
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+.ios-nav-label {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.1;
+}

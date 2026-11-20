@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920" width="100%" height="100%">
+  <defs>
+    <style>
+      .bg { fill: #0a0a0a; }
+      .xo-vdark { fill: #1a1a1a; }
+      .xo-dark { fill: #2a2a2a; }
+      .xo-dark-mid { fill: #3f3f3f; }
+      .xo-mid { fill: #656565; }
+      .xo-light-mid { fill: #909090; }
+      .xo-offwhite { fill: #d0d0d0; }
+      .xo-white { fill: #ffffff; }
+    </style>
+
+    <!-- Hand-painted rough Brush X shape with expressive strokes -->
+    <g id="brush-x">
+      <path d="M -75 -150 C -55 -90 -15 -20 65 135 C 45 142 20 142 -5 135 C -60 -10 -45 -75 -85 -135 Z" />
+      <path d="M 65 -142 C 15 -60 -35 15 -75 135 C -55 138 -30 135 -10 128 C 30 15 55 -65 85 -130 Z" />
+    </g>
+
+    <!-- Hand-painted rough Brush O shape with thick expressive ring -->
+    <g id="brush-o">
+      <path d="M 0 -120 C 85 -120 120 -55 120 0 C 120 65 75 120 0 120 C -85 120 -120 55 -120 0 C -120 -65 -75 -120 0 -120 Z M -5 -60 C -45 -60 -60 -28 -60 0 C -60 28 -45 60 -5 60 C 35 60 50 28 50 0 C 50 -28 35 -60 -5 -60 Z" fill-rule="evenodd" />
+    </g>
+
+    <!-- Organic thick Brush Stroke X (Variation B) -->
+    <g id="brush-x-thick">
+      <path d="M -90 -160 C -65 -80 -10 -10 80 150 C 55 155 25 150 0 140 C -65 -15 -50 -85 -95 -145 Z" />
+      <path d="M 75 -150 C 20 -65 -40 20 -85 145 C -60 145 -30 140 -5 130 C 35 20 65 -70 95 -135 Z" />
+    </g>
+  </defs>
+
+  <!-- Dark Canvas Background -->
+  <rect class="bg" width="1080" height="1920" />
+
+  <!-- TOP LAYER: Dark Gray Painted XO Shapes -->
+  <g transform="translate(260, 220) rotate(-18) scale(1.6)" class="xo-dark">
+    <use href="#brush-x-thick" />
+  </g>
+  <g transform="translate(520, 160) rotate(12) scale(1.5)" class="xo-dark-mid">
+    <use href="#brush-o" />
+  </g>
+  <g transform="translate(860, 260) rotate(32) scale(1.7)" class="xo-dark">
+    <use href="#brush-x" />
+  </g>
+  <g transform="translate(140, 520) rotate(-25) scale(1.8)" class="xo-dark-mid">
+    <use href="#brush-o" />
+  </g>
+
+  <!-- MIDDLE LAYER: Mid-Gray Painted XO Shapes -->
+  <g transform="translate(800, 680) rotate(18) scale(1.8)" class="xo-mid">
+    <use href="#brush-x-thick" />
+  </g>
+  <g transform="translate(380, 780) rotate(-12) scale(1.9)" class="xo-mid">
+    <use href="#brush-o" />
+  </g>
+  <g transform="translate(120, 1120) rotate(-30) scale(2.0)" class="xo-light-mid">
+    <use href="#brush-x" />
+  </g>
+  <g transform="translate(880, 1180) rotate(22) scale(1.6)" class="xo-dark-mid">
+    <use href="#brush-o" />
+  </g>
+
+  <!-- LOWER LAYER: Bright Off-White & Pure White Painted XO Shapes (matching reference photo) -->
+  <g transform="translate(440, 1320) rotate(-8) scale(2.1)" class="xo-offwhite">
+    <use href="#brush-o" />
+  </g>
+  <g transform="translate(620, 1620) rotate(26) scale(2.2)" class="xo-white">
+    <use href="#brush-x-thick" />
+  </g>
+  <g transform="translate(200, 1780) rotate(-18) scale(1.8)" class="xo-vdark">
+    <use href="#brush-o" />
+  </g>
+  <g transform="translate(940, 1860) rotate(-10) scale(2.0)" class="xo-white">
+    <use href="#brush-o" />
+  </g>
+  <g transform="translate(520, 1960) rotate(15) scale(2.2)" class="xo-white">
+    <use href="#brush-o" />
+  </g>
+</svg>

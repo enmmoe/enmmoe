@@ -1,0 +1,6 @@
+{
+  "name": "enmmoe",
+  "description": "enmmoe — a modern global social platform for people, creators, stories, messaging, and discovery.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
