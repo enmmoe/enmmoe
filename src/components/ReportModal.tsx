@@ -45,7 +45,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose }) => 
                 onClick={() => setSelectedReason(r.id)}
                 className="w-full px-4 py-3.5 flex items-center justify-between text-left text-[15px] cursor-pointer hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
               >
-                <span className={selected ? 'font-semibold text-[#007AFF] dark:text-[#0A84FF]' : ''}>
+                <span className={selected ? 'font-semibold text-[#007AFF]' : ''}>
                   {r.label}
                 </span>
                 {selected && <Check className="w-4 h-4 text-[#007AFF] shrink-0" />}

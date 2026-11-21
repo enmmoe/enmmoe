@@ -109,7 +109,7 @@ export const CommentDrawer: React.FC<CommentDrawerProps> = ({
           </div>
           <p className="text-[15px] leading-snug break-words">
             {comment.replyToUsername && (
-              <span className="text-[#007AFF] dark:text-[#0A84FF] font-medium mr-1">
+              <span className="text-[#007AFF] font-medium mr-1">
                 @{comment.replyToUsername}
               </span>
             )}
@@ -122,7 +122,7 @@ export const CommentDrawer: React.FC<CommentDrawerProps> = ({
             type="button"
             onClick={() => onLikeComment(comment.id)}
             className={`inline-flex items-center gap-1 cursor-pointer ios-press ${
-              comment.isLiked ? 'text-[#007AFF] dark:text-[#0A84FF] font-semibold' : ''
+              comment.isLiked ? 'text-[#007AFF] font-semibold' : ''
             }`}
           >
             <Heart className={`w-3.5 h-3.5 ${comment.isLiked ? 'fill-current' : ''}`} />
@@ -180,7 +180,7 @@ export const CommentDrawer: React.FC<CommentDrawerProps> = ({
                 onClick={() => setSortBy(mode)}
                 className={`px-2 py-0.5 rounded-md text-[12px] font-semibold capitalize cursor-pointer transition-colors ${
                   sortBy === mode
-                    ? 'bg-white dark:bg-[#1C1C1E] text-[#007AFF] dark:text-[#0A84FF] shadow-xs'
+                    ? 'bg-white dark:bg-[#1C1C1E] text-[#007AFF] shadow-xs'
                     : 'text-[#8E8E93]'
                 }`}
               >
@@ -208,7 +208,7 @@ export const CommentDrawer: React.FC<CommentDrawerProps> = ({
           {replyingTo && (
             <div className="flex items-center justify-between px-3 py-1.5 mb-2 rounded-xl bg-[#F2F2F7] dark:bg-[#2C2C2E] text-[13px] text-[#8E8E93]">
               <div className="flex items-center gap-1.5">
-                <CornerDownRight className="w-3.5 h-3.5 text-[#007AFF] dark:text-[#0A84FF]" />
+                <CornerDownRight className="w-3.5 h-3.5 text-[#007AFF]" />
                 <span>
                   Replying to <strong className="text-black dark:text-white">@{replyingTo.username}</strong>
                 </span>
@@ -240,7 +240,7 @@ export const CommentDrawer: React.FC<CommentDrawerProps> = ({
               type="submit"
               disabled={!commentText.trim()}
               aria-label="Send comment"
-              className="w-10 h-10 rounded-full bg-[#007AFF] dark:bg-[#0A84FF] text-white flex items-center justify-center disabled:opacity-35 cursor-pointer ios-press"
+              className="w-10 h-10 rounded-full bg-[#007AFF] text-white flex items-center justify-center disabled:opacity-35 cursor-pointer ios-press"
             >
               <Send className="w-4 h-4" />
             </button>

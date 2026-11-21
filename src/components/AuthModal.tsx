@@ -409,7 +409,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <div className="p-3.5 rounded-2xl bg-[#F2F2F7] dark:bg-[#2C2C2E] space-y-2">
                     <div className="flex items-center justify-between text-[13px]">
                       <span className="font-medium">Verification Code</span>
-                      <span className="text-[#007AFF] dark:text-[#0A84FF] font-medium inline-flex items-center gap-1">
+                      <span className="text-[#007AFF] font-medium inline-flex items-center gap-1">
                         <CheckCircle2 className="w-3.5 h-3.5" /> Ready
                       </span>
                     </div>
@@ -466,7 +466,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 <div>
                   <div className="flex items-center justify-between mb-1.5 text-[13px]">
                     <span className="font-medium text-[#8E8E93]">Date of Birth (18+)</span>
-                    <span className={ageValid ? 'text-[#007AFF] dark:text-[#0A84FF]' : 'text-black dark:text-white font-semibold'}>
+                    <span className={ageValid ? 'text-[#007AFF]' : 'text-black dark:text-white font-semibold'}>
                       Age: {calculatedAge}
                     </span>
                   </div>

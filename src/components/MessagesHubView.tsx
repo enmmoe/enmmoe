@@ -83,6 +83,7 @@ interface MessagesHubViewProps {
   onForwardMessage?: (message: SocialMessage) => void;
   onBackToList?: () => void;
   onUserTyping?: (convId: string, isTyping: boolean) => void;
+  onToggleFollow?: (userId: string) => void;
   isTabActive?: boolean;
 }
 
@@ -141,6 +142,7 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
   onForwardMessage,
   onBackToList,
   onUserTyping,
+  onToggleFollow,
   isTabActive = true,
 }) => {
   const { t, language } = useLanguage();
@@ -512,19 +514,21 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
               {t('messages_title', 'Messages')}
             </h1>
 
-            <button
-              id="messages-compose-btn"
-              type="button"
-              onClick={() => {
-                soundFX.playClick();
-                setIsComposeOpen(true);
-              }}
-              aria-label="New message"
-              title="New message"
-              className="w-11 h-11 rounded-full flex items-center justify-center text-[#007AFF] dark:text-[#0A84FF] hover:bg-[#F2F2F7] dark:hover:bg-[#1C1C1E] transition-colors ios-press cursor-pointer"
-            >
-              <SquarePen className="w-5 h-5 stroke-[2]" />
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                id="messages-compose-btn"
+                type="button"
+                onClick={() => {
+                  soundFX.playClick();
+                  setIsComposeOpen(true);
+                }}
+                aria-label="New message"
+                title="New message"
+                className="min-w-[44px] min-h-[44px] -mr-2 inline-flex items-center justify-center text-[#007AFF] transition-opacity hover:opacity-75 ios-press cursor-pointer"
+              >
+                <SquarePen className="w-[22px] h-[22px] stroke-[1.85]" />
+              </button>
+            </div>
           </header>
 
           {/* Search Bar */}
@@ -569,7 +573,7 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                       className={`p-[2px] rounded-full ${
                         story.isSeen
                           ? 'bg-[#C7C7CC] dark:bg-[#3A3A3C]'
-                          : 'bg-[#007AFF] dark:bg-[#0A84FF]'
+                          : 'bg-[#007AFF]'
                       }`}
                     >
                       <div className="p-[2px] rounded-full bg-white dark:bg-black">
@@ -630,13 +634,13 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setIsSpamOpen(false)}
-                    className="inline-flex items-center gap-1 text-[15px] font-medium text-[#007AFF] dark:text-[#0A84FF] mb-6 cursor-pointer ios-press"
+                    className="inline-flex items-center gap-1 text-[15px] font-medium text-[#007AFF] mb-6 cursor-pointer ios-press"
                   >
                     <ChevronLeft className="w-5 h-5" />
                     <span>Back to Requests</span>
                   </button>
                   <EmptyState
-                    icon={<ShieldCheck className="w-7 h-7 text-[#007AFF] dark:text-[#0A84FF]" />}
+                    icon={<ShieldCheck className="w-7 h-7 text-[#007AFF]" />}
                     title="No Spam Messages"
                     description="Filtered or suspicious message requests will appear here safely."
                   />
@@ -757,7 +761,7 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                             <span
                               className={`text-[13px] tabular-nums shrink-0 ${
                                 hasUnread
-                                  ? 'text-[#007AFF] dark:text-[#0A84FF] font-semibold'
+                                  ? 'text-[#007AFF] font-semibold'
                                   : 'text-[#8E8E93]'
                               }`}
                             >
@@ -778,7 +782,7 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                             <p
                               className={`text-[15px] truncate ${
                                 isPartnerTyping
-                                  ? 'text-[#007AFF] dark:text-[#0A84FF] font-medium'
+                                  ? 'text-[#007AFF] font-medium'
                                   : hasUnread
                                   ? 'text-black dark:text-white font-medium'
                                   : 'text-[#8E8E93]'
@@ -818,7 +822,7 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                     id="tiktok-details-back-btn"
                     type="button"
                     onClick={() => setIsDetailsOpen(false)}
-                    className="min-w-[44px] min-h-[44px] inline-flex items-center gap-0.5 px-2 text-[#007AFF] dark:text-[#0A84FF] cursor-pointer ios-press"
+                    className="min-w-[44px] min-h-[44px] inline-flex items-center gap-0.5 px-2 text-[#007AFF] cursor-pointer ios-press"
                   >
                     <ChevronLeft className="w-6 h-6 stroke-[2.2]" />
                     <span className="text-[17px]">Chat</span>
@@ -864,7 +868,7 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                     className="flex flex-col items-center gap-1.5 cursor-pointer ios-press"
                   >
                     <div className="w-12 h-12 rounded-full bg-white dark:bg-[#1C1C1E] flex items-center justify-center border border-black/[0.06] dark:border-white/[0.08]">
-                      <Users className="w-5 h-5 text-[#007AFF] dark:text-[#0A84FF]" />
+                      <Users className="w-5 h-5 text-[#007AFF]" />
                     </div>
                     <span className="text-[12px] font-medium text-[#8E8E93]">Create Group</span>
                   </button>
@@ -876,7 +880,7 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                     className="flex flex-col items-center gap-1.5 cursor-pointer ios-press"
                   >
                     <div className="w-12 h-12 rounded-full bg-white dark:bg-[#1C1C1E] flex items-center justify-center border border-black/[0.06] dark:border-white/[0.08]">
-                      <UserIcon className="w-5 h-5 text-[#007AFF] dark:text-[#0A84FF]" />
+                      <UserIcon className="w-5 h-5 text-[#007AFF]" />
                     </div>
                     <span className="text-[12px] font-medium text-[#8E8E93]">Profile</span>
                   </button>
@@ -912,7 +916,7 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                       className="w-full px-4 py-3.5 flex items-center justify-between text-left hover:bg-[#F2F2F7]/50 dark:hover:bg-[#2C2C2E]/40 cursor-pointer"
                     >
                       <div className="flex items-center gap-3">
-                        <Sparkles className="w-5 h-5 text-[#007AFF] dark:text-[#0A84FF]" />
+                        <Sparkles className="w-5 h-5 text-[#007AFF]" />
                         <span className="text-[16px]">Bubble Style</span>
                       </div>
                       <ChevronRight className="w-4 h-4 text-[#C7C7CC]" />
@@ -927,7 +931,7 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                       className="w-full px-4 py-3.5 flex items-center justify-between text-left hover:bg-[#F2F2F7]/50 dark:hover:bg-[#2C2C2E]/40 cursor-pointer"
                     >
                       <div className="flex items-center gap-3">
-                        <PenLine className="w-5 h-5 text-[#007AFF] dark:text-[#0A84FF]" />
+                        <PenLine className="w-5 h-5 text-[#007AFF]" />
                         <span className="text-[16px]">Nickname</span>
                       </div>
                       <div className="flex items-center gap-2 text-[15px] text-[#8E8E93]">
@@ -987,7 +991,7 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                       className="w-full px-4 py-3.5 flex items-center justify-between text-left hover:bg-[#F2F2F7]/50 dark:hover:bg-[#2C2C2E]/40 cursor-pointer"
                     >
                       <div className="flex items-center gap-3">
-                        <Clock className="w-5 h-5 text-[#007AFF] dark:text-[#0A84FF]" />
+                        <Clock className="w-5 h-5 text-[#007AFF]" />
                         <span className="text-[16px]">Disappearing Messages</span>
                       </div>
                       <div className="flex items-center gap-2 text-[15px] text-[#8E8E93]">
@@ -1010,7 +1014,7 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                       className="w-full px-4 py-3.5 flex items-center justify-between text-left hover:bg-[#F2F2F7]/50 dark:hover:bg-[#2C2C2E]/40 cursor-pointer"
                     >
                       <div className="flex items-center gap-3">
-                        <Lock className="w-5 h-5 text-[#007AFF] dark:text-[#0A84FF]" />
+                        <Lock className="w-5 h-5 text-[#007AFF]" />
                         <span className="text-[16px]">Privacy & Safety</span>
                       </div>
                       <ChevronRight className="w-4 h-4 text-[#C7C7CC]" />
@@ -1063,7 +1067,7 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                       type="button"
                       onClick={onBackToList}
                       aria-label="Back to messages"
-                      className="min-w-[44px] min-h-[44px] inline-flex items-center justify-center text-[#007AFF] dark:text-[#0A84FF] cursor-pointer ios-press"
+                      className="min-w-[44px] min-h-[44px] inline-flex items-center justify-center text-[#007AFF] cursor-pointer ios-press"
                     >
                       <ChevronLeft className="w-6 h-6 stroke-[2.2]" />
                     </button>
@@ -1090,7 +1094,7 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                             isCurrentBlocked
                               ? 'text-black dark:text-white font-semibold'
                               : isOtherUserTyping
-                              ? 'text-[#007AFF] dark:text-[#0A84FF] font-medium'
+                              ? 'text-[#007AFF] font-medium'
                               : 'text-[#8E8E93]'
                           }`}
                         >
@@ -1114,9 +1118,9 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                     type="button"
                     onClick={() => setIsDetailsOpen(true)}
                     aria-label="Conversation details"
-                    className="w-11 h-11 rounded-full flex items-center justify-center text-[#007AFF] dark:text-[#0A84FF] hover:bg-[#F2F2F7] dark:hover:bg-[#1C1C1E] cursor-pointer ios-press"
+                    className="min-w-[44px] min-h-[44px] -mr-1 inline-flex items-center justify-center text-[#007AFF] cursor-pointer ios-press"
                   >
-                    <MoreHorizontal className="w-5 h-5" />
+                    <MoreHorizontal className="w-[22px] h-[22px] stroke-[1.85]" />
                   </button>
                 </div>
               </header>
@@ -1224,7 +1228,7 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                             <div className="flex items-center justify-end gap-1 mt-1 px-1 text-[11px] text-[#8E8E93] tabular-nums">
                               <span>{formatClockTime(msg.timestamp)}</span>
                               {msg.status === 'read' ? (
-                                <span className="inline-flex items-center gap-0.5 text-[#007AFF] dark:text-[#0A84FF] font-medium">
+                                <span className="inline-flex items-center gap-0.5 text-[#007AFF] font-medium">
                                   · Seen <CheckCheck className="w-3 h-3" />
                                 </span>
                               ) : (
@@ -1286,7 +1290,7 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                   <div className="flex items-center gap-2.5 min-w-0 flex-1">
                     <div className="w-[3px] h-7 rounded-full bg-[#007AFF] shrink-0" />
                     <div className="min-w-0 flex-1">
-                      <p className="text-[12px] font-semibold text-[#007AFF] dark:text-[#0A84FF] truncate">
+                      <p className="text-[12px] font-semibold text-[#007AFF] truncate">
                         Replying to {replyingMessage.senderName}
                       </p>
                       <p className="text-[13px] text-[#8E8E93] truncate">
@@ -1728,10 +1732,10 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
         title="Privacy & Safety"
       >
         <div className="px-4 py-3 space-y-4">
-          <div className="p-3.5 rounded-2xl bg-[#007AFF]/10 dark:bg-[#0A84FF]/15 flex items-start gap-3">
-            <ShieldCheck className="w-5 h-5 text-[#007AFF] dark:text-[#0A84FF] shrink-0 mt-0.5" />
+          <div className="p-3.5 rounded-2xl bg-[#007AFF]/12 flex items-start gap-3">
+            <ShieldCheck className="w-5 h-5 text-[#007AFF] shrink-0 mt-0.5" />
             <div>
-              <p className="text-[15px] font-semibold text-[#007AFF] dark:text-[#0A84FF]">Privacy & Moderation</p>
+              <p className="text-[15px] font-semibold text-[#007AFF]">Privacy & Moderation</p>
               <p className="text-[13px] text-[#8E8E93] mt-0.5 leading-relaxed">
                 Manage blocking, reporting, and disappearing message controls for this conversation.
               </p>
@@ -1986,30 +1990,43 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
             currentUser={currentUser}
             user={(() => {
               const target = inspectedUser || activeConversation!.participants[0];
+              const fullCreator = creators.find((c) => c.id === target.id);
               return {
+                ...fullCreator,
+                ...target,
                 id: target.id,
-                name: target.name || displayName,
-                username: target.username || 'creator',
-                avatar: target.avatar,
-                isVerified: target.isVerified,
-                isPremium: Boolean(target.isVerified),
-                bio: (target as any).bio || 'Webtoon creator and avid story reader.',
-                followersCount: (target as any).followersCount || 14200,
-                followingCount: (target as any).followingCount || 395,
-                postsCount: (target as any).postsCount || 6,
-                likesCount: (target as any).likesCount || 89400,
-                storiesReadCount: (target as any).storiesReadCount || 184,
-                achievementsCount: (target as any).achievementsCount || 24,
+                name: target.name || fullCreator?.name || displayName,
+                username: target.username || fullCreator?.username || 'creator',
+                avatar: target.avatar || fullCreator?.avatar || '',
+                isVerified: target.isVerified ?? fullCreator?.isVerified,
+                isPremium: Boolean(target.isVerified ?? fullCreator?.isVerified),
+                bio: (target as any).bio || fullCreator?.bio || 'Webtoon creator and avid story reader.',
+                followersCount: (target as any).followersCount ?? fullCreator?.followersCount ?? 14200,
+                followingCount: (target as any).followingCount ?? fullCreator?.followingCount ?? 395,
+                postsCount: (target as any).postsCount ?? fullCreator?.postsCount ?? 6,
+                likesCount: (target as any).likesCount ?? fullCreator?.likesCount ?? 89400,
+                storiesReadCount: (target as any).storiesReadCount ?? fullCreator?.storiesReadCount ?? 184,
+                achievementsCount: (target as any).achievementsCount ?? fullCreator?.achievementsCount ?? 24,
               };
             })()}
-            isFollowing={followedUserIds.includes(
-              (inspectedUser || activeConversation!.participants[0]).id
-            )}
-            onToggleFollow={(id) =>
-              setFollowedUserIds((prev) =>
-                prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-              )
+            isFollowing={
+              onToggleFollow
+                ? (currentUser.followingIds || []).includes(
+                    (inspectedUser || activeConversation!.participants[0]).id
+                  )
+                : followedUserIds.includes(
+                    (inspectedUser || activeConversation!.participants[0]).id
+                  )
             }
+            onToggleFollow={(id) => {
+              if (onToggleFollow) {
+                onToggleFollow(id);
+              } else {
+                setFollowedUserIds((prev) =>
+                  prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+                );
+              }
+            }}
             onSendMessage={() => {
               setIsProfileOverviewOpen(false);
               setIsDetailsOpen(false);

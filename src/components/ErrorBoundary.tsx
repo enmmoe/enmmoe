@@ -27,7 +27,7 @@ export class ErrorBoundary extends Component<Props, State> {
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-white dark:bg-black text-black dark:text-white flex flex-col items-center justify-center p-6 text-center">
-          <div className="w-12 h-12 rounded-full bg-[#F2F2F7] dark:bg-[#1C1C1E] text-[#007AFF] dark:text-[#0A84FF] flex items-center justify-center mb-4">
+          <div className="w-12 h-12 rounded-full bg-[#F2F2F7] dark:bg-[#1C1C1E] text-[#007AFF] flex items-center justify-center mb-4">
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
@@ -41,7 +41,7 @@ export class ErrorBoundary extends Component<Props, State> {
               this.setState({ hasError: false });
               window.location.reload();
             }}
-            className="px-6 py-2.5 bg-[#007AFF] hover:bg-[#0066D6] dark:bg-[#0A84FF] text-white rounded-2xl font-semibold text-[15px] ios-press cursor-pointer"
+            className="px-6 py-2.5 bg-[#007AFF] hover:bg-[#0066D6] text-white rounded-2xl font-semibold text-[15px] ios-press cursor-pointer"
           >
             Refresh
           </button>

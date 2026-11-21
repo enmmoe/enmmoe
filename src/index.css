@@ -29,9 +29,9 @@
     --ios-text-tertiary: #636366;
     --ios-border: rgba(255, 255, 255, 0.1);
     --ios-separator: rgba(255, 255, 255, 0.12);
-    --ios-blue: #0A84FF;
-    --ios-blue-hover: #2E96FF;
-    --ios-blue-soft: rgba(10, 132, 255, 0.16);
+    --ios-blue: #007AFF;
+    --ios-blue-hover: #1A88FF;
+    --ios-blue-soft: rgba(0, 122, 255, 0.18);
   }
 
   html,
@@ -236,4 +236,13 @@
   font-size: 12px;
   font-weight: 500;
   line-height: 1.1;
+}
+
+/* Home Header Script Wordmark */
+.enmmoe-wordmark {
+  font-family: "Parisienne", "Snell Roundhand", "Brush Script MT", cursive;
+  font-weight: 400;
+  font-style: normal;
+  font-synthesis: none;
+  letter-spacing: 0.015em;
 }

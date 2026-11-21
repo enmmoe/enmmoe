@@ -49,7 +49,7 @@ export const BookCover: React.FC<BookCoverProps> = ({
       )}
     </div>
 
-    <h3 className="text-[15px] font-semibold text-black dark:text-white truncate w-full leading-snug group-hover:text-[#007AFF] dark:group-hover:text-[#0A84FF] transition-colors">
+    <h3 className="text-[15px] font-semibold text-black dark:text-white truncate w-full leading-snug group-hover:text-[#007AFF] transition-colors">
       {title}
     </h3>
     {subtitle && (

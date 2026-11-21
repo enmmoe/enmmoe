@@ -62,6 +62,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   };
 
   const selectedAvatarOption = ENMMOE_AVATARS.find((item) => item.src === avatar);
+  const isCustomStudioAvatar = !selectedAvatarOption && Boolean(avatar?.startsWith('data:image/'));
 
   return (
     <AnimatePresence>
@@ -89,7 +90,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                 id="edit-profile-back-btn"
                 type="button"
                 onClick={onClose}
-                className="text-[17px] text-[#007AFF] dark:text-[#0A84FF] py-2 pr-2 cursor-pointer ios-press"
+                className="min-h-[44px] text-[17px] text-[#007AFF] py-2 pr-2 cursor-pointer ios-press"
               >
                 Cancel
               </button>
@@ -100,14 +101,14 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                 id="edit-profile-save-btn"
                 type="button"
                 onClick={handleSave}
-                className="text-[17px] font-semibold text-[#007AFF] dark:text-[#0A84FF] py-2 pl-2 cursor-pointer ios-press"
+                className="min-h-[44px] text-[17px] font-semibold text-[#007AFF] py-2 pl-2 cursor-pointer ios-press"
               >
                 Save
               </button>
             </header>
 
             <div className="flex-1 overflow-y-auto px-4 py-6 space-y-5 pb-safe">
-              {/* Current Profile Image Preview + Netflix-Inspired 7-Avatar Picker */}
+              {/* Current Profile Image Preview + Avatar Picker */}
               <div className="bg-white dark:bg-[#2C2C2E] rounded-2xl p-4 space-y-4 border border-black/[0.04] dark:border-white/[0.08]">
                 <div className="flex items-center gap-3.5">
                   <Avatar
@@ -123,6 +124,8 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                     <p className="text-[13px] text-[#8E8E93] mt-0.5">
                       {selectedAvatarOption
                         ? `Selected · ${selectedAvatarOption.label}`
+                        : isCustomStudioAvatar
+                        ? 'Selected · Pulse 3D Avatar'
                         : 'Select an enmmoe avatar below'}
                     </p>
                   </div>
@@ -147,7 +150,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                         onClick={() => handleSelectAvatar(item.src)}
                         className={`group relative aspect-square rounded-2xl overflow-hidden cursor-pointer transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#007AFF] ${
                           isSelected
-                            ? 'ring-[3px] ring-[#007AFF] dark:ring-[#0A84FF] scale-[1.03] shadow-md'
+                            ? 'ring-[3px] ring-[#007AFF] scale-[1.03] shadow-md'
                             : 'ring-1 ring-black/[0.08] dark:ring-white/[0.1] opacity-85 hover:opacity-100 hover:scale-[1.02]'
                         }`}
                       >

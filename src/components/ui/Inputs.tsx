@@ -45,7 +45,7 @@ export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
         <div
           className={`flex-1 flex items-center h-[40px] px-3 rounded-[12px] bg-[#F2F2F7] dark:bg-[#1C1C1E] transition-all duration-200 border ${
             focused
-              ? 'border-[#007AFF] dark:border-[#0A84FF] bg-white dark:bg-[#1C1C1E] shadow-[0_0_0_3px_rgba(0,122,255,0.12)]'
+              ? 'border-[#007AFF] bg-white dark:bg-[#1C1C1E] shadow-[0_0_0_3px_rgba(0,122,255,0.12)]'
               : 'border-transparent'
           }`}
         >
@@ -81,7 +81,7 @@ export const SearchBar = forwardRef<HTMLInputElement, SearchBarProps>(
               onChange('');
               onCancel?.();
             }}
-            className="text-[16px] font-normal text-[#007AFF] dark:text-[#0A84FF] whitespace-nowrap shrink-0 px-1 py-1 cursor-pointer active:opacity-60 transition-opacity"
+            className="text-[16px] font-normal text-[#007AFF] whitespace-nowrap shrink-0 px-1 py-1 cursor-pointer active:opacity-60 transition-opacity"
           >
             {cancelLabel}
           </button>
@@ -116,7 +116,7 @@ export const TextField: React.FC<TextFieldProps> = ({
       className={`w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-[#F2F2F7] dark:bg-[#1C1C1E] text-[16px] text-black dark:text-white placeholder-[#8E8E93] border transition-all focus:bg-white dark:focus:bg-[#2C2C2E] ${
         error
           ? 'border-black/60 dark:border-white/60 focus:border-black dark:focus:border-white'
-          : 'border-black/[0.06] dark:border-white/[0.08] focus:border-[#007AFF] dark:focus:border-[#0A84FF]'
+          : 'border-black/[0.06] dark:border-white/[0.08] focus:border-[#007AFF]'
       } ${className}`}
       {...props}
     />

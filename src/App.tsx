@@ -25,6 +25,7 @@ import { BottomNav } from './components/BottomNav';
 import { HomeFeedView } from './components/HomeFeedView';
 import { MessagesHubView } from './components/MessagesHubView';
 import { DiscoverView } from './components/DiscoverView';
+import { PulseView } from './components/PulseView';
 import { ProfileView } from './components/ProfileView';
 import { SettingsView } from './components/SettingsView';
 
@@ -43,7 +44,11 @@ import { EnmmoeIntro } from './components/EnmmoeIntro';
 import { OfflineBanner, ToastProvider, useToast } from './components/ui';
 
 import { ENMMOE_AVATARS } from './data/enmmoeAvatars';
-import { ALL_WEBTOONS } from './data/webtoonData';
+import {
+  ALL_WEBTOONS,
+  getCanonicalWebtoonId,
+  resolveWebtoonById,
+} from './data/webtoonData';
 import { NavigationProvider, useNavigation } from './navigation/NavigationContext';
 import { AnimatePresence, motion } from 'motion/react';
 import { safeStorage } from './utils/storage';
@@ -62,6 +67,7 @@ const CONVS_STORAGE_KEY = 'enmmoe_social_convs_v1';
 const LEGACY_CONVS_STORAGE_KEY = 'flirthubx_social_convs_v3';
 const NOTIFS_STORAGE_KEY = 'enmmoe_social_notifs_v1';
 const LEGACY_NOTIFS_STORAGE_KEY = 'flirthubx_social_notifs_v3';
+const SUBSCRIBED_WEBTOONS_KEY = 'enmmoe_subscribed_webtoons_v1';
 
 function loadWithLegacy<T>(primaryKey: string, legacyKey: string, fallback: T): T {
   const existing = safeStorage.getJSON<T | null>(primaryKey, null);
@@ -78,6 +84,7 @@ function AppContent() {
     activeTab: navActiveTab,
     openHome,
     openDiscover,
+    openPulse,
     openMessages,
     openProfile,
     openBook,
@@ -107,18 +114,35 @@ function AppContent() {
     };
   }, [showToast]);
 
-  // Webtoon Subscriptions
-  const [subscribedWebtoons, setSubscribedWebtoons] = useState<Record<string, boolean>>({
-    'otherworldly-family-man': true,
-    'down-to-earth': true,
-    'father-i-dont-want-marriage': true,
-  });
+  // Webtoon Subscriptions (persisted, keyed by canonical series ID)
+  const [subscribedWebtoons, setSubscribedWebtoons] = useState<Record<string, boolean>>(() =>
+    safeStorage.getJSON<Record<string, boolean>>(SUBSCRIBED_WEBTOONS_KEY, {
+      'otherworldly-family-man': true,
+      'down-to-earth': true,
+      'father-i-dont-want-marriage': true,
+    })
+  );
+
+  const [discoverSearchTagTrigger, setDiscoverSearchTagTrigger] = useState<{
+    query: string;
+    nonce: number;
+  } | null>(null);
 
   const handleToggleSubscribeWebtoon = (webtoonId: string) => {
-    setSubscribedWebtoons((prev) => ({
-      ...prev,
-      [webtoonId]: !prev[webtoonId],
-    }));
+    const canonicalId = getCanonicalWebtoonId(webtoonId);
+    const defaultVal = Boolean(resolveWebtoonById(canonicalId)?.isSubscribed);
+    setSubscribedWebtoons((prev) => {
+      const currentVal = prev[canonicalId] ?? defaultVal;
+      return {
+        ...prev,
+        [canonicalId]: !currentVal,
+      };
+    });
+  };
+
+  const handleSelectSeriesTag = (tag: string) => {
+    setDiscoverSearchTagTrigger({ query: tag, nonce: Date.now() });
+    openDiscover();
   };
 
   // User State (with one-time migration to crisp white iOS default theme & enmmoe default avatar)
@@ -164,15 +188,20 @@ function AppContent() {
     }
     return INITIAL_SOCIAL_CONVERSATIONS;
   });
-  const [notifications, setNotifications] = useState<NotificationItem[]>(() =>
-    loadWithLegacy<NotificationItem[]>(
+  const [notifications, setNotifications] = useState<NotificationItem[]>(() => {
+    const loaded = loadWithLegacy<NotificationItem[]>(
       NOTIFS_STORAGE_KEY,
       LEGACY_NOTIFS_STORAGE_KEY,
       INITIAL_NOTIFICATIONS
-    )
-  );
+    );
+    return Array.isArray(loaded)
+      ? loaded.map((n) =>
+          n.text === 'started following you.' ? { ...n, text: 'subscribed to you.' } : n
+        )
+      : INITIAL_NOTIFICATIONS;
+  });
 
-  const [creators] = useState<User[]>(INITIAL_CREATORS);
+  const [creators, setCreators] = useState<User[]>(INITIAL_CREATORS);
   const [activeConversationId, setActiveConversationId] = useState<string>('');
 
   // Keep activeConversationId synchronized with route changes (fixes browser/in-app back from chat)
@@ -185,10 +214,12 @@ function AppContent() {
   // Preserve scroll positions across tab switches (prevent display:none scroll reset)
   const homeScrollRef = React.useRef<HTMLDivElement>(null);
   const discoverScrollRef = React.useRef<HTMLDivElement>(null);
+  const pulseScrollRef = React.useRef<HTMLDivElement>(null);
   const profileScrollRef = React.useRef<HTMLDivElement>(null);
-  const tabScrollTopRef = React.useRef<{ home: number; discover: number; profile: number }>({
+  const tabScrollTopRef = React.useRef<{ home: number; discover: number; pulse: number; profile: number }>({
     home: 0,
     discover: 0,
+    pulse: 0,
     profile: 0,
   });
 
@@ -228,14 +259,19 @@ function AppContent() {
   useEffect(() => safeStorage.setJSON(REELS_STORAGE_KEY, reels), [reels]);
   useEffect(() => safeStorage.setJSON(CONVS_STORAGE_KEY, conversations), [conversations]);
   useEffect(() => safeStorage.setJSON(NOTIFS_STORAGE_KEY, notifications), [notifications]);
+  useEffect(
+    () => safeStorage.setJSON(SUBSCRIBED_WEBTOONS_KEY, subscribedWebtoons),
+    [subscribedWebtoons]
+  );
 
-  // Optimistic Follow / Unfollow Creator with Offline Rollback
+  // Optimistic Subscribe / Unsubscribe Creator with Offline Rollback
   const handleToggleFollow = (targetUserId: string) => {
     const previousFollowing = user.followingIds || [];
     const wasFollowing = previousFollowing.includes(targetUserId);
     const optimisticFollowing = wasFollowing
       ? previousFollowing.filter((id) => id !== targetUserId)
       : [...previousFollowing, targetUserId];
+    const targetCreator = creators.find((c) => c.id === targetUserId);
 
     // 1. Immediate optimistic UI update
     setUser((prev) => ({
@@ -243,6 +279,21 @@ function AppContent() {
       followingIds: optimisticFollowing,
       followingCount: optimisticFollowing.length,
     }));
+
+    setCreators((prev) =>
+      prev.map((c) => {
+        if (c.id !== targetUserId) return c;
+        const currentIds = c.followersIds || [];
+        const nextIds = wasFollowing
+          ? currentIds.filter((id) => id !== user.id)
+          : Array.from(new Set([...currentIds, user.id]));
+        return {
+          ...c,
+          followersIds: nextIds,
+          followersCount: Math.max(0, c.followersCount + (wasFollowing ? -1 : 1)),
+        };
+      })
+    );
 
     setPosts((prev) =>
       prev.map((p) =>
@@ -255,6 +306,15 @@ function AppContent() {
       )
     );
 
+    if (typeof navigator === 'undefined' || navigator.onLine) {
+      showToast(
+        wasFollowing
+          ? `Unsubscribed from ${targetCreator?.name || 'creator'}`
+          : `Subscribed to ${targetCreator?.name || 'creator'}`,
+        { type: 'success', durationMs: 1800 }
+      );
+    }
+
     // 2. Rollback gracefully if offline
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       setTimeout(() => {
@@ -263,6 +323,20 @@ function AppContent() {
           followingIds: previousFollowing,
           followingCount: previousFollowing.length,
         }));
+        setCreators((prev) =>
+          prev.map((c) => {
+            if (c.id !== targetUserId) return c;
+            const currentIds = c.followersIds || [];
+            const revertedIds = wasFollowing
+              ? Array.from(new Set([...currentIds, user.id]))
+              : currentIds.filter((id) => id !== user.id);
+            return {
+              ...c,
+              followersIds: revertedIds,
+              followersCount: Math.max(0, c.followersCount + (wasFollowing ? 1 : -1)),
+            };
+          })
+        );
         setPosts((prev) =>
           prev.map((p) =>
             p.authorId === targetUserId ? { ...p, isAuthorFollowed: wasFollowing } : p
@@ -273,7 +347,7 @@ function AppContent() {
             r.authorId === targetUserId ? { ...r, isAuthorFollowed: wasFollowing } : r
           )
         );
-        showToast('Could not update follow status while offline', { type: 'error' });
+        showToast('Could not update subscription while offline', { type: 'error' });
       }, 300);
     }
   };
@@ -759,7 +833,7 @@ function AppContent() {
     } else if (notif.targetType === 'post') {
       openHome();
     } else if (notif.actorId) {
-      openProfile(notif.actorId);
+      openProfile(notif.actorId === user.id ? 'me' : notif.actorId);
     }
   };
 
@@ -781,10 +855,12 @@ function AppContent() {
   const showHomeTab = currentRoute.type === 'home';
   const showMessagesTab = currentRoute.type === 'messages';
   const showDiscoverTab = currentRoute.type === 'discover';
+  const showPulseTab = currentRoute.type === 'pulse';
   const showMyProfileTab = isMyProfileRoute;
 
   const isHomeVisible = showHomeTab && !isDeepScreen;
   const isDiscoverVisible = showDiscoverTab && !isDeepScreen;
+  const isPulseVisible = showPulseTab && !isDeepScreen;
   const isProfileVisible = showMyProfileTab && !isDeepScreen;
 
   // Restore saved tab scrollTop whenever switching back to a tab
@@ -799,6 +875,12 @@ function AppContent() {
       discoverScrollRef.current.scrollTop = tabScrollTopRef.current.discover;
     }
   }, [isDiscoverVisible]);
+
+  React.useLayoutEffect(() => {
+    if (isPulseVisible && pulseScrollRef.current) {
+      pulseScrollRef.current.scrollTop = tabScrollTopRef.current.pulse;
+    }
+  }, [isPulseVisible]);
 
   React.useLayoutEffect(() => {
     if (isProfileVisible && profileScrollRef.current) {
@@ -841,13 +923,18 @@ function AppContent() {
                   theme: prev.theme === 'light' ? 'dark' : 'light',
                 }))
               }
-              onOpenBook={openBook}
-              onOpenChapter={openChapter}
-              onOpenUserProfile={(u) => openProfile(u.id, u)}
+              onOpenBook={(bookId, ep) => openBook(getCanonicalWebtoonId(bookId), ep)}
+              onOpenChapter={(chId, bookId, ep) =>
+                openChapter(chId, bookId ? getCanonicalWebtoonId(bookId) : undefined, ep)
+              }
+              onOpenUserProfile={(u) => openProfile(u.id === user.id ? 'me' : u.id, u)}
+              onOpenCreate={() => setShowCreateModal(true)}
+              onOpenPulse={openPulse}
               onOpenNotifications={() => setShowNotificationsModal(true)}
               unreadNotificationsCount={unreadNotifsCount}
               subscribedWebtoons={subscribedWebtoons}
               onToggleSubscribe={handleToggleSubscribeWebtoon}
+              isActive={isHomeVisible}
             />
           </div>
 
@@ -890,6 +977,7 @@ function AppContent() {
                 }
               }}
               onUserTyping={handleUserTyping}
+              onToggleFollow={handleToggleFollow}
               isTabActive={showMessagesTab && !isDeepScreen}
             />
           </div>
@@ -910,13 +998,50 @@ function AppContent() {
             aria-hidden={!showDiscoverTab}
           >
             <DiscoverView
+              currentUser={user}
               creators={creators}
               posts={posts}
               reels={reels}
+              subscribedWebtoons={subscribedWebtoons}
+              onToggleSubscribe={handleToggleSubscribeWebtoon}
+              externalSearchTrigger={discoverSearchTagTrigger}
               onToggleFollow={handleToggleFollow}
               onOpenReel={() => openHome()}
-              onOpenWebtoon={(w) => openBook(w.id)}
-              onOpenUserProfile={(u) => openProfile(u.id, u)}
+              onOpenWebtoon={(w) => openBook(getCanonicalWebtoonId(w.id))}
+              onOpenUserProfile={(u) => openProfile(u.id === user.id ? 'me' : u.id, u)}
+            />
+          </div>
+
+          {/* TAB 4: PULSE (Primary 3D Character, Seoul World & Community Hub) */}
+          <div
+            ref={pulseScrollRef}
+            onScroll={(e) => {
+              if (isPulseVisible) {
+                tabScrollTopRef.current.pulse = e.currentTarget.scrollTop;
+              }
+            }}
+            className={
+              isPulseVisible
+                ? 'flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden'
+                : 'hidden'
+            }
+            aria-hidden={!showPulseTab}
+          >
+            <PulseView
+              currentUser={user}
+              stories={stories}
+              posts={posts}
+              onUpdateUser={(updated) => setUser((prev) => ({ ...prev, ...updated }))}
+              onPublishStory={handlePublishStory}
+              onPublishPost={handlePublishPost}
+              onOpenStory={(idx) => setActiveStoryIndex(idx)}
+              onOpenCreate={() => setShowCreateModal(true)}
+              onReactPost={handleReactPost}
+              onOpenComments={(pId) => setActiveCommentPostId(pId)}
+              onToggleSave={handleToggleSavePost}
+              onToggleRepost={handleToggleRepost}
+              onVotePoll={handleVotePoll}
+              onOpenUserProfile={(u) => openProfile(u.id === user.id ? 'me' : u.id, u)}
             />
           </div>
 
@@ -937,9 +1062,13 @@ function AppContent() {
           >
             <ProfileView
               currentUser={user}
+              creators={creators}
               profileUser={null}
               posts={posts}
               reels={reels}
+              subscribedWebtoons={subscribedWebtoons}
+              onToggleSubscribe={handleToggleSubscribeWebtoon}
+              isActive={isProfileVisible}
               showBackButton={canGoBack}
               onBack={goBack}
               onOpenSettings={openSettings}
@@ -955,8 +1084,8 @@ function AppContent() {
               onVotePoll={handleVotePoll}
               onOpenReportModal={(targetId) => setReportingTargetId(targetId)}
               onUpdateUser={(updated) => setUser((prev) => ({ ...prev, ...updated }))}
-              onOpenBook={openBook}
-              onOpenUserProfile={(u) => openProfile(u.id, u)}
+              onOpenBook={(bookId, ep) => openBook(getCanonicalWebtoonId(bookId), ep)}
+              onOpenUserProfile={(u) => openProfile(u.id === user.id ? 'me' : u.id, u)}
             />
           </div>
 
@@ -982,16 +1111,29 @@ function AppContent() {
             )}
 
             {currentRoute.type === 'profile' && !isMyProfileRoute && (() => {
+              const matchedCreator = creators.find((c) => c.id === currentRoute.userId);
               const profileTargetUser =
-                currentRoute.user ||
-                creators.find((c) => c.id === currentRoute.userId) || {
-                  id: currentRoute.userId,
-                  name: 'Creator',
-                  username: 'creator',
-                  avatar: creators[0]?.avatar || '',
-                  bio: 'Webtoon Author & Storyteller.',
-                  isVerified: false,
-                };
+                matchedCreator || currentRoute.user
+                  ? {
+                      ...matchedCreator,
+                      ...currentRoute.user,
+                      id: currentRoute.userId,
+                      name: currentRoute.user?.name || matchedCreator?.name || 'Creator',
+                      username: currentRoute.user?.username || matchedCreator?.username || 'creator',
+                      avatar: currentRoute.user?.avatar || matchedCreator?.avatar || creators[0]?.avatar || '',
+                      bio: currentRoute.user?.bio || matchedCreator?.bio,
+                      followersCount: matchedCreator?.followersCount ?? currentRoute.user?.followersCount,
+                      followingCount: matchedCreator?.followingCount ?? currentRoute.user?.followingCount,
+                      isVerified: currentRoute.user?.isVerified ?? matchedCreator?.isVerified,
+                    }
+                  : {
+                      id: currentRoute.userId,
+                      name: 'Creator',
+                      username: 'creator',
+                      avatar: creators[0]?.avatar || '',
+                      bio: 'Webtoon Author & Storyteller.',
+                      isVerified: false,
+                    };
               return (
                 <motion.div
                   key={`route-profile-${currentRoute.userId}`}
@@ -1003,9 +1145,12 @@ function AppContent() {
                 >
                   <ProfileView
                     currentUser={user}
+                    creators={creators}
                     profileUser={profileTargetUser}
                     posts={posts}
                     reels={reels}
+                    subscribedWebtoons={subscribedWebtoons}
+                    onToggleSubscribe={handleToggleSubscribeWebtoon}
                     showBackButton={true}
                     onBack={goBack}
                     onOpenSettings={openSettings}
@@ -1021,8 +1166,8 @@ function AppContent() {
                     onVotePoll={handleVotePoll}
                     onOpenReportModal={(targetId) => setReportingTargetId(targetId)}
                     onUpdateUser={(updated) => setUser((prev) => ({ ...prev, ...updated }))}
-                    onOpenBook={openBook}
-                    onOpenUserProfile={(u) => openProfile(u.id, u)}
+                    onOpenBook={(bookId, ep) => openBook(getCanonicalWebtoonId(bookId), ep)}
+                    onOpenUserProfile={(u) => openProfile(u.id === user.id ? 'me' : u.id, u)}
                   />
                 </motion.div>
               );
@@ -1030,32 +1175,44 @@ function AppContent() {
           </AnimatePresence>
 
           {/* Book Details (/book/:bookId) */}
-          {currentRoute.type === 'book' && (
-            <WebtoonReaderModal
-              webtoon={ALL_WEBTOONS.find((w) => w.id === currentRoute.bookId) || ALL_WEBTOONS[0]}
-              isOpen={true}
-              initialTab="episodes"
-              onClose={goBack}
-              onBack={goBack}
-              initialEpisodeNumber={currentRoute.initialEpisodeNumber}
-              onSelectChapter={(chId, epNum) => openChapter(chId, currentRoute.bookId, epNum)}
-              isSubscribed={subscribedWebtoons[currentRoute.bookId] ?? true}
-              onToggleSubscribe={handleToggleSubscribeWebtoon}
-              theme={user.theme === 'light' ? 'light' : 'dark'}
-            />
-          )}
+          {currentRoute.type === 'book' && (() => {
+            const canonicalId = getCanonicalWebtoonId(currentRoute.bookId);
+            const book = resolveWebtoonById(canonicalId) || ALL_WEBTOONS[0];
+            const bookIsSubscribed =
+              subscribedWebtoons[book.id] ?? Boolean(book.isSubscribed);
+            return (
+              <WebtoonReaderModal
+                key={`book-${book.id}`}
+                webtoon={book}
+                isOpen={true}
+                initialTab="episodes"
+                onClose={goBack}
+                onBack={goBack}
+                initialEpisodeNumber={currentRoute.initialEpisodeNumber}
+                onSelectChapter={(chId, epNum) => openChapter(chId, book.id, epNum)}
+                isSubscribed={bookIsSubscribed}
+                onToggleSubscribe={handleToggleSubscribeWebtoon}
+                onSelectTag={handleSelectSeriesTag}
+                theme={user.theme === 'light' ? 'light' : 'dark'}
+              />
+            );
+          })()}
 
           {/* Full-Screen Reader (/chapter/:chapterId) */}
           {currentRoute.type === 'chapter' && (() => {
             const chapterWebtoon =
-              ALL_WEBTOONS.find(
-                (w) =>
-                  w.id === currentRoute.bookId ||
-                  w.episodes.some((e) => e.id === currentRoute.chapterId)
-              ) || ALL_WEBTOONS[0];
+              (currentRoute.bookId ? resolveWebtoonById(currentRoute.bookId) : undefined) ||
+              ALL_WEBTOONS.find((w) =>
+                w.episodes.some((e) => e.id === currentRoute.chapterId)
+              ) ||
+              ALL_WEBTOONS[0];
+            const canonicalBook = resolveWebtoonById(chapterWebtoon.id) || chapterWebtoon;
+            const chapterIsSubscribed =
+              subscribedWebtoons[canonicalBook.id] ?? Boolean(canonicalBook.isSubscribed);
             return (
               <WebtoonReaderModal
-                webtoon={chapterWebtoon}
+                key={`chapter-${canonicalBook.id}-${currentRoute.chapterId}`}
+                webtoon={canonicalBook}
                 isOpen={true}
                 initialTab="reader"
                 initialEpisodeId={currentRoute.chapterId}
@@ -1063,13 +1220,16 @@ function AppContent() {
                 onClose={goBack}
                 onBack={goBack}
                 onBackToBook={() =>
-                  currentRoute.bookId ? openBook(currentRoute.bookId) : goBack()
+                  currentRoute.bookId
+                    ? openBook(getCanonicalWebtoonId(currentRoute.bookId))
+                    : goBack()
                 }
                 onSelectChapter={(chId, epNum) =>
-                  openChapter(chId, currentRoute.bookId || chapterWebtoon.id, epNum)
+                  openChapter(chId, canonicalBook.id, epNum)
                 }
-                isSubscribed={subscribedWebtoons[chapterWebtoon.id] ?? true}
+                isSubscribed={chapterIsSubscribed}
                 onToggleSubscribe={handleToggleSubscribeWebtoon}
+                onSelectTag={handleSelectSeriesTag}
                 theme={user.theme === 'light' ? 'light' : 'dark'}
               />
             );
@@ -1079,13 +1239,15 @@ function AppContent() {
         {/* Compact iOS Docked Bottom Navigation */}
         {!isDeepScreen && (
           <BottomNav
-            activeTab={navActiveTab}
+            activeTab={isMyProfileRoute ? 'profile' : navActiveTab}
             onTabChange={(tab) => {
               if (tab === navActiveTab && !isDeepScreen) {
                 return;
               }
               if (tab === 'home') {
                 openHome();
+              } else if (tab === 'pulse') {
+                openPulse();
               } else if (tab === 'messages') {
                 setActiveConversationId('');
                 openMessages();
@@ -1137,7 +1299,7 @@ function AppContent() {
             }
             onOpenUserProfile={(u) => {
               setActiveStoryIndex(null);
-              openProfile(u.id, u);
+              openProfile(u.id === user.id ? 'me' : u.id, u);
             }}
           />
         )}
@@ -1161,7 +1323,7 @@ function AppContent() {
             onReportComment={(commentId) => setReportingTargetId(commentId)}
             onOpenUserProfile={(u) => {
               setActiveCommentPostId(null);
-              openProfile(u.id, u);
+              openProfile(u.id === user.id ? 'me' : u.id, u);
             }}
           />
         )}
@@ -1203,6 +1365,10 @@ function AppContent() {
               onOpenEditProfile={() => {
                 setViewingProfileUser(null);
                 setShowEditProfileModal(true);
+              }}
+              onOpenStoryReader={(bookId, ep) => {
+                setViewingProfileUser(null);
+                openBook(getCanonicalWebtoonId(bookId), ep);
               }}
               onClose={() => setViewingProfileUser(null)}
               isLight={user.theme === 'light'}

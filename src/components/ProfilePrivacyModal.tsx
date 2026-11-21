@@ -63,7 +63,7 @@ export const ProfilePrivacyModal: React.FC<ProfilePrivacyModalProps> = ({
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-[13px] font-medium text-[#8E8E93] uppercase tracking-wider px-1">
             <UserCheck className="w-4 h-4 text-[#007AFF]" />
-            <span>Who Can Follow You</span>
+            <span>Who Can Subscribe to You</span>
           </div>
           <div className="grid grid-cols-2 p-1 rounded-xl bg-[#F2F2F7] dark:bg-[#2C2C2E] gap-1">
             {[
@@ -95,7 +95,7 @@ export const ProfilePrivacyModal: React.FC<ProfilePrivacyModalProps> = ({
           <div className="grid grid-cols-3 p-1 rounded-xl bg-[#F2F2F7] dark:bg-[#2C2C2E] gap-1">
             {[
               { id: 'everyone', label: 'Everyone' },
-              { id: 'following', label: 'Followers' },
+              { id: 'following', label: 'Subscribers' },
               { id: 'nobody', label: 'Nobody' },
             ].map((opt) => (
               <button

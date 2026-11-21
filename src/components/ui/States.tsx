@@ -72,7 +72,7 @@ export const OfflineBanner: React.FC<{ onRetry?: () => void }> = ({ onRetry }) =
       <button
         type="button"
         onClick={onRetry}
-        className="text-[13px] font-semibold text-[#007AFF] dark:text-[#0A84FF] shrink-0 cursor-pointer"
+        className="text-[13px] font-semibold text-[#007AFF] shrink-0 cursor-pointer"
       >
         Retry
       </button>

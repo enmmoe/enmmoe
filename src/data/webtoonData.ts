@@ -1,3 +1,9 @@
+import otherworldlyFamilyBanner from '../assets/images/otherworldly_family_banner_1795183230212.jpg';
+import otherworldlyFamilyCover from '../assets/images/otherworldly_family_cover_1795183229679.jpg';
+import downToEarthCover from '../assets/images/down_to_earth_cover_1795183229891.jpg';
+import mafiaNannyCover from '../assets/images/mafia_nanny_cover_1795183230245.jpg';
+import villainessMarriageCover from '../assets/images/villainess_marriage_cover_1795183230558.jpg';
+
 export interface WebtoonEpisode {
   id: string;
   number: number;
@@ -36,39 +42,50 @@ export interface WebtoonItem {
 }
 
 export const SAMPLE_PANELS = [
-  'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=800&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=800&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1563089145-599997674d42?w=800&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&auto=format&fit=crop&q=80',
+  otherworldlyFamilyBanner,
+  otherworldlyFamilyCover,
+  'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=900&auto=format&q=85',
+  'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=900&auto=format&q=85',
+  'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=900&auto=format&q=85',
+];
+
+const ROMANCE_PANELS = [
+  downToEarthCover,
+  villainessMarriageCover,
+  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=900&auto=format&q=85',
+  'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=900&auto=format&q=85',
+  'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=900&auto=format&q=85',
+];
+
+const THRILLER_PANELS = [
+  mafiaNannyCover,
+  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=900&auto=format&q=85',
+  'https://images.unsplash.com/photo-1509281373149-e957c6296406?w=900&auto=format&q=85',
+  'https://images.unsplash.com/photo-1563089145-599997674d42?w=900&auto=format&q=85',
 ];
 
 export const FEATURED_WEBTOONS: WebtoonItem[] = [
   {
     id: 'otherworldly-family-man',
-    title: 'THE OTHERWORLDLY FAMILY MAN',
+    title: 'The Otherworldly Family Man',
     author: 'K-Story & Studio M',
     genre: 'Fantasy',
     subGenres: ['Isekai', 'Found Family', 'Cohabitation', 'Magic'],
-    coverImage: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=800&auto=format&fit=crop&q=80',
-    bannerImage: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=1200&auto=format&fit=crop&q=80',
-    summary: 'After awakening in a magical realm, an ordinary chef adopts a cursed girl and an elven protector, building an unbreakable family against rival imperial guilds.',
+    coverImage: otherworldlyFamilyCover,
+    bannerImage: otherworldlyFamilyBanner,
+    summary: 'An ordinary chef awakens in a magical realm, protects a cursed child, and builds an unbreakable family.',
     rating: 9.87,
     viewsCount: '18.4M',
     subscribersCount: '920K',
-    subLabel: '10+ free episodes',
-    subLabelColor: '#0A84FF',
-    topBadge: 'New Episode',
-    topBadgeText: 'New Episode',
-    matchScore: 99,
-    recommendationReason: 'Trending #1 in Fantasy',
+    subLabel: '10+ episodes',
+    subLabelColor: '#007AFF',
     dayOfWeek: 'MON',
     isSubscribed: true,
     lastReadEpisode: 1,
     totalEpisodes: 65,
     episodes: [
-      { id: 'ep-1', number: 1, title: 'Episode 1: The Golden Portal', thumbnail: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=400&auto=format&fit=crop&q=80', date: 'Aug 24', likes: 24500, isFree: true, panels: SAMPLE_PANELS },
-      { id: 'ep-2', number: 2, title: 'Episode 2: Unlikely Guardians', thumbnail: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=400&auto=format&fit=crop&q=80', date: 'Aug 25', likes: 21200, isFree: true, panels: SAMPLE_PANELS },
+      { id: 'ep-1', number: 1, title: 'Episode 1: The Golden Portal', thumbnail: otherworldlyFamilyBanner, date: 'Aug 24', likes: 24500, isFree: true, panels: SAMPLE_PANELS },
+      { id: 'ep-2', number: 2, title: 'Episode 2: Unlikely Guardians', thumbnail: otherworldlyFamilyCover, date: 'Aug 25', likes: 21200, isFree: true, panels: SAMPLE_PANELS },
       { id: 'ep-3', number: 3, title: 'Episode 3: The Hearth of Avalon', thumbnail: 'https://images.unsplash.com/photo-1563089145-599997674d42?w=400&auto=format&fit=crop&q=80', date: 'Aug 26', likes: 19800, isFree: true, panels: SAMPLE_PANELS },
       { id: 'ep-4', number: 4, title: 'Episode 4: Whispers in the Forest', thumbnail: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&auto=format&fit=crop&q=80', date: 'Aug 27', likes: 28400, isFree: true, panels: SAMPLE_PANELS },
     ],
@@ -79,24 +96,23 @@ export const FEATURED_WEBTOONS: WebtoonItem[] = [
     author: 'Pookie Senpai',
     genre: 'Romance',
     subGenres: ['Alien', 'Romance', 'Slice of Life', 'Comedy'],
-    coverImage: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=800&auto=format&fit=crop&q=80',
-    bannerImage: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=1200&auto=format&fit=crop&q=80',
-    summary: 'Kade lives a normal, reclusive life until an adorable alien girl named Zaida crashes in his backyard, changing his world forever.',
+    coverImage: downToEarthCover,
+    bannerImage: downToEarthCover,
+    summary: 'Kade lives a quiet solitary life until an adorable alien girl crashes into his backyard.',
     rating: 9.92,
     viewsCount: '45.2M',
     subscribersCount: '2.1M',
-    subLabel: '10+ free episodes',
-    subLabelColor: '#0A84FF',
-    matchScore: 97,
-    topBadge: 'Hot',
-    topBadgeText: 'Hot Series',
+    subLabel: '15+ episodes',
+    subLabelColor: '#007AFF',
     dayOfWeek: 'TUE',
     isSubscribed: true,
     lastReadEpisode: 4,
     totalEpisodes: 180,
     episodes: [
-      { id: 'dte-1', number: 1, title: 'Episode 1: Crash Landing', thumbnail: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80', date: 'Aug 10', likes: 45000, isFree: true, panels: SAMPLE_PANELS },
-      { id: 'dte-2', number: 2, title: 'Episode 2: Strange Taste', thumbnail: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400&auto=format&fit=crop&q=80', date: 'Aug 17', likes: 42000, isFree: true, panels: SAMPLE_PANELS },
+      { id: 'dte-1', number: 1, title: 'Episode 1: Crash Landing', thumbnail: downToEarthCover, date: 'Aug 10', likes: 45000, isFree: true, panels: ROMANCE_PANELS },
+      { id: 'dte-2', number: 2, title: 'Episode 2: Strange Taste', thumbnail: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400&auto=format&fit=crop&q=80', date: 'Aug 17', likes: 42000, isFree: true, panels: ROMANCE_PANELS },
+      { id: 'dte-3', number: 3, title: 'Episode 3: House Rules', thumbnail: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400&auto=format&fit=crop&q=80', date: 'Aug 24', likes: 43800, isFree: true, panels: ROMANCE_PANELS },
+      { id: 'dte-4', number: 4, title: 'Episode 4: Stargazing', thumbnail: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=400&auto=format&fit=crop&q=80', date: 'Aug 31', likes: 47200, isFree: true, panels: ROMANCE_PANELS },
     ],
   },
   {
@@ -105,23 +121,21 @@ export const FEATURED_WEBTOONS: WebtoonItem[] = [
     author: 'Violet Matter',
     genre: 'Thriller',
     subGenres: ['Action', 'Romance', 'Mafia', 'Mystery'],
-    coverImage: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&auto=format&fit=crop&q=80',
-    bannerImage: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=1200&auto=format&fit=crop&q=80',
-    summary: 'An elite undercover bodyguard takes a job as the live-in nanny for a powerful crime syndicate leader’s young heir.',
+    coverImage: mafiaNannyCover,
+    bannerImage: mafiaNannyCover,
+    summary: 'An elite undercover bodyguard steps in as live-in nanny for a ruthless crime syndicate’s young heir.',
     rating: 9.89,
     viewsCount: '28.1M',
     subscribersCount: '1.4M',
-    subLabel: '10+ free episodes',
-    subLabelColor: '#0A84FF',
-    topBadge: 'New Episode',
-    topBadgeText: 'New Episode',
-    matchScore: 95,
+    subLabel: '12+ episodes',
+    subLabelColor: '#007AFF',
     dayOfWeek: 'WED',
     isSubscribed: false,
     lastReadEpisode: 2,
     totalEpisodes: 94,
     episodes: [
-      { id: 'tmn-1', number: 1, title: 'Episode 1: The Interview', thumbnail: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80', date: 'Aug 12', likes: 31000, isFree: true, panels: SAMPLE_PANELS },
+      { id: 'tmn-1', number: 1, title: 'Episode 1: The Interview', thumbnail: mafiaNannyCover, date: 'Aug 12', likes: 31000, isFree: true, panels: THRILLER_PANELS },
+      { id: 'tmn-2', number: 2, title: 'Episode 2: Rules of the House', thumbnail: 'https://images.unsplash.com/photo-1509281373149-e957c6296406?w=400&auto=format&fit=crop&q=80', date: 'Aug 19', likes: 33400, isFree: true, panels: THRILLER_PANELS },
     ],
   }
 ];
@@ -133,13 +147,14 @@ export const CONTINUE_READING_ITEMS: WebtoonItem[] = [
     author: 'Hong Heesu & Roal',
     genre: 'Fantasy Romance',
     subGenres: ['Reincarnation', 'Royalty', 'Misunderstandings'],
-    coverImage: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=600&auto=format&fit=crop&q=80',
+    coverImage: villainessMarriageCover,
+    bannerImage: villainessMarriageCover,
     summary: 'Reborn as the notorious villainess Jubelian, she is determined to avoid execution by faking a romance with the tyrant crown prince.',
     rating: 9.85,
     viewsCount: '15.6M',
     subscribersCount: '780K',
-    subLabel: '10+ free episodes',
-    subLabelColor: '#0A84FF',
+    subLabel: '10+ episodes',
+    subLabelColor: '#007AFF',
     topBadge: 'New Series',
     topBadgeText: 'New Series',
     dayOfWeek: 'THU',
@@ -147,8 +162,10 @@ export const CONTINUE_READING_ITEMS: WebtoonItem[] = [
     lastReadEpisode: 14,
     totalEpisodes: 110,
     episodes: [
-      { id: 'fwm-1', number: 1, title: 'Episode 1: The Rebirth', thumbnail: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400&auto=format&fit=crop&q=80', date: 'Aug 01', likes: 29000, isFree: true, panels: SAMPLE_PANELS },
-      { id: 'fwm-14', number: 14, title: 'Episode 14: The Royal Banquet', thumbnail: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400&auto=format&fit=crop&q=80', date: 'Aug 18', likes: 34000, isFree: true, panels: SAMPLE_PANELS },
+      { id: 'fwm-1', number: 1, title: 'Episode 1: The Rebirth', thumbnail: villainessMarriageCover, date: 'Aug 01', likes: 29000, isFree: true, panels: ROMANCE_PANELS },
+      { id: 'fwm-2', number: 2, title: 'Episode 2: Broken Engagement', thumbnail: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400&auto=format&fit=crop&q=80', date: 'Aug 05', likes: 30200, isFree: true, panels: ROMANCE_PANELS },
+      { id: 'fwm-3', number: 3, title: 'Episode 3: The Crown Prince', thumbnail: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80', date: 'Aug 10', likes: 31800, isFree: true, panels: ROMANCE_PANELS },
+      { id: 'fwm-14', number: 14, title: 'Episode 14: The Royal Banquet', thumbnail: villainessMarriageCover, date: 'Aug 18', likes: 34000, isFree: true, panels: ROMANCE_PANELS },
     ],
   },
   {
@@ -157,13 +174,13 @@ export const CONTINUE_READING_ITEMS: WebtoonItem[] = [
     author: 'Pookie Senpai',
     genre: 'Romance',
     subGenres: ['Alien', 'Romance', 'Comedy'],
-    coverImage: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=600&auto=format&fit=crop&q=80',
+    coverImage: downToEarthCover,
     summary: 'Kade lives a normal, reclusive life until an alien girl named Zaida crashes in his backyard.',
     rating: 9.92,
     viewsCount: '45.2M',
     subscribersCount: '2.1M',
-    subLabel: '10+ free episodes',
-    subLabelColor: '#0A84FF',
+    subLabel: '10+ episodes',
+    subLabelColor: '#007AFF',
     topBadge: 'New Episode',
     topBadgeText: 'Ep. 5 Dropped',
     dayOfWeek: 'TUE',
@@ -171,7 +188,7 @@ export const CONTINUE_READING_ITEMS: WebtoonItem[] = [
     lastReadEpisode: 4,
     totalEpisodes: 180,
     episodes: [
-      { id: 'dte-1', number: 1, title: 'Episode 1: Crash Landing', thumbnail: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80', date: 'Aug 10', likes: 45000, isFree: true, panels: SAMPLE_PANELS },
+      { id: 'dte-1', number: 1, title: 'Episode 1: Crash Landing', thumbnail: downToEarthCover, date: 'Aug 10', likes: 45000, isFree: true, panels: ROMANCE_PANELS },
     ],
   },
   {
@@ -180,19 +197,19 @@ export const CONTINUE_READING_ITEMS: WebtoonItem[] = [
     author: 'Violet Matter',
     genre: 'Thriller',
     subGenres: ['Action', 'Romance', 'Mafia'],
-    coverImage: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=600&auto=format&fit=crop&q=80',
+    coverImage: mafiaNannyCover,
     summary: 'An elite undercover bodyguard takes a job as the live-in nanny for a powerful crime boss.',
     rating: 9.89,
     viewsCount: '28.1M',
     subscribersCount: '1.4M',
-    subLabel: '10+ free episodes',
-    subLabelColor: '#0A84FF',
+    subLabel: '10+ episodes',
+    subLabelColor: '#007AFF',
     dayOfWeek: 'WED',
     isSubscribed: false,
     lastReadEpisode: 2,
     totalEpisodes: 94,
     episodes: [
-      { id: 'tmn-1', number: 1, title: 'Episode 1: The Interview', thumbnail: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80', date: 'Aug 12', likes: 31000, isFree: true, panels: SAMPLE_PANELS },
+      { id: 'tmn-1', number: 1, title: 'Episode 1: The Interview', thumbnail: mafiaNannyCover, date: 'Aug 12', likes: 31000, isFree: true, panels: THRILLER_PANELS },
     ],
   },
   {
@@ -206,8 +223,8 @@ export const CONTINUE_READING_ITEMS: WebtoonItem[] = [
     rating: 9.94,
     viewsCount: '34.8M',
     subscribersCount: '1.8M',
-    subLabel: '10+ free episodes',
-    subLabelColor: '#0A84FF',
+    subLabel: '10+ episodes',
+    subLabelColor: '#007AFF',
     topBadge: 'New Episode',
     topBadgeText: 'New Episode',
     dayOfWeek: 'THU',
@@ -228,19 +245,19 @@ export const TRENDING_WEBTOONS: WebtoonItem[] = [
     author: 'Pookie Senpai',
     genre: 'Romance',
     subGenres: ['Alien', 'Romance', 'Slice of Life'],
-    coverImage: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=600&auto=format&fit=crop&q=80',
+    coverImage: downToEarthCover,
     summary: 'An alien girl named Zaida crashes in Kade’s backyard, turning his solitary life into an adventure of human emotions.',
     rating: 9.92,
     viewsCount: '45.2M',
     subscribersCount: '2.1M',
     subLabel: 'Top #1 Trending',
-    subLabelColor: '#0A84FF',
+    subLabelColor: '#007AFF',
     topBadge: 'Rank',
     topBadgeText: '#1',
     dayOfWeek: 'TUE',
     totalEpisodes: 180,
     episodes: [
-      { id: 't1-1', number: 1, title: 'Episode 1: Zaida Landing', thumbnail: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80', date: 'Aug 10', likes: 45000, isFree: true, panels: SAMPLE_PANELS },
+      { id: 't1-1', number: 1, title: 'Episode 1: Zaida Landing', thumbnail: downToEarthCover, date: 'Aug 10', likes: 45000, isFree: true, panels: ROMANCE_PANELS },
     ],
   },
   {
@@ -250,19 +267,19 @@ export const TRENDING_WEBTOONS: WebtoonItem[] = [
     author: 'Overlord X',
     genre: 'Action',
     subGenres: ['System', 'Monsters', 'Level Up'],
-    coverImage: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=600&auto=format&fit=crop&q=80',
+    coverImage: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80',
     summary: 'The last survivor rewinds 10 years with all maxed beast-summoning skills intact.',
     rating: 9.88,
     viewsCount: '38.5M',
     subscribersCount: '1.7M',
-    subLabel: '10+ free episodes',
-    subLabelColor: '#0A84FF',
+    subLabel: '10+ episodes',
+    subLabelColor: '#007AFF',
     topBadge: 'Rank',
     topBadgeText: '#2',
     dayOfWeek: 'WED',
     totalEpisodes: 76,
     episodes: [
-      { id: 't2-1', number: 1, title: 'Episode 1: Re-roll', thumbnail: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=400&auto=format&fit=crop&q=80', date: 'Aug 18', likes: 26000, isFree: true, panels: SAMPLE_PANELS },
+      { id: 't2-1', number: 1, title: 'Episode 1: Re-roll', thumbnail: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=400&auto=format&fit=crop&q=80', date: 'Aug 18', likes: 26000, isFree: true, panels: SAMPLE_PANELS },
     ],
   },
   {
@@ -277,14 +294,15 @@ export const TRENDING_WEBTOONS: WebtoonItem[] = [
     rating: 9.94,
     viewsCount: '34.8M',
     subscribersCount: '1.8M',
-    subLabel: '10+ free episodes',
-    subLabelColor: '#0A84FF',
+    subLabel: '10+ episodes',
+    subLabelColor: '#007AFF',
     topBadge: 'Rank',
     topBadgeText: '#3',
     dayOfWeek: 'THU',
     totalEpisodes: 82,
     episodes: [
-      { id: 't3-1', number: 1, title: 'Episode 1: The Nightmare', thumbnail: 'https://images.unsplash.com/photo-1509281373149-e957c6296406?w=400&auto=format&fit=crop&q=80', date: 'Aug 04', likes: 38000, isFree: true, panels: SAMPLE_PANELS },
+      { id: 't3-1', number: 1, title: 'Episode 1: The Nightmare', thumbnail: 'https://images.unsplash.com/photo-1509281373149-e957c6296406?w=400&auto=format&fit=crop&q=80', date: 'Aug 04', likes: 38000, isFree: true, panels: THRILLER_PANELS },
+      { id: 't3-9', number: 9, title: 'Episode 9: Midnight Crossing', thumbnail: mafiaNannyCover, date: 'Aug 18', likes: 41200, isFree: true, panels: THRILLER_PANELS },
     ],
   },
   {
@@ -300,7 +318,7 @@ export const TRENDING_WEBTOONS: WebtoonItem[] = [
     viewsCount: '29.7M',
     subscribersCount: '1.3M',
     subLabel: 'Opposites Attract',
-    subLabelColor: '#0A84FF',
+    subLabelColor: '#007AFF',
     topBadge: 'Rank',
     topBadgeText: '#4',
     dayOfWeek: 'FRI',
@@ -321,8 +339,8 @@ export const TRENDING_WEBTOONS: WebtoonItem[] = [
     rating: 9.95,
     viewsCount: '31.2M',
     subscribersCount: '1.6M',
-    subLabel: '10+ free episodes',
-    subLabelColor: '#0A84FF',
+    subLabel: '10+ episodes',
+    subLabelColor: '#007AFF',
     topBadge: 'Rank',
     topBadgeText: '#5',
     dayOfWeek: 'SAT',
@@ -343,8 +361,8 @@ export const TRENDING_WEBTOONS: WebtoonItem[] = [
     rating: 9.87,
     viewsCount: '21.4M',
     subscribersCount: '980K',
-    subLabel: '10+ free episodes',
-    subLabelColor: '#0A84FF',
+    subLabel: '10+ episodes',
+    subLabelColor: '#007AFF',
     topBadge: 'Rank',
     topBadgeText: '#6',
     dayOfWeek: 'SUN',
@@ -368,7 +386,7 @@ export const NEW_RELEASES_WEBTOONS: WebtoonItem[] = [
     viewsCount: '17.3M',
     subscribersCount: '940K',
     subLabel: 'New Episode',
-    subLabelColor: '#0A84FF',
+    subLabelColor: '#007AFF',
     topBadge: 'New Episode',
     topBadgeText: 'New Episode',
     dayOfWeek: 'FRI',
@@ -388,8 +406,8 @@ export const NEW_RELEASES_WEBTOONS: WebtoonItem[] = [
     rating: 9.83,
     viewsCount: '11.5M',
     subscribersCount: '610K',
-    subLabel: '10+ free episodes',
-    subLabelColor: '#0A84FF',
+    subLabel: '10+ episodes',
+    subLabelColor: '#007AFF',
     topBadge: 'New Episode',
     topBadgeText: 'New Episode',
     dayOfWeek: 'THU',
@@ -410,7 +428,7 @@ export const NEW_RELEASES_WEBTOONS: WebtoonItem[] = [
     viewsCount: '24.1M',
     subscribersCount: '1.2M',
     subLabel: 'New Series',
-    subLabelColor: '#0A84FF',
+    subLabelColor: '#007AFF',
     topBadge: 'New Series',
     topBadgeText: 'New Series',
     dayOfWeek: 'TUE',
@@ -430,8 +448,8 @@ export const NEW_RELEASES_WEBTOONS: WebtoonItem[] = [
     rating: 9.79,
     viewsCount: '12.3M',
     subscribersCount: '630K',
-    subLabel: '10+ free episodes',
-    subLabelColor: '#0A84FF',
+    subLabel: '10+ episodes',
+    subLabelColor: '#007AFF',
     topBadge: 'New Episode',
     topBadgeText: 'New Episode',
     dayOfWeek: 'THU',
@@ -454,12 +472,12 @@ export const RECOMMENDED_WEBTOONS: WebtoonItem[] = [
     rating: 9.91,
     viewsCount: '27.9M',
     subscribersCount: '1.3M',
-    subLabel: '98% Match',
-    subLabelColor: '#0A84FF',
+    subLabel: 'Drama · Staff Pick',
+    subLabelColor: '#007AFF',
     matchScore: 98,
     recommendationReason: 'Because you like Character-driven Stories',
     topBadge: 'Popular',
-    topBadgeText: '98% Match',
+    topBadgeText: 'Popular',
     dayOfWeek: 'MON',
     totalEpisodes: 140,
     episodes: [
@@ -477,8 +495,8 @@ export const RECOMMENDED_WEBTOONS: WebtoonItem[] = [
     rating: 9.81,
     viewsCount: '9.4M',
     subscribersCount: '520K',
-    subLabel: '10+ free episodes',
-    subLabelColor: '#0A84FF',
+    subLabel: '10+ episodes',
+    subLabelColor: '#007AFF',
     matchScore: 96,
     recommendationReason: 'Top Pick in Wholesome Comedy',
     dayOfWeek: 'MON',
@@ -489,23 +507,23 @@ export const RECOMMENDED_WEBTOONS: WebtoonItem[] = [
   },
   {
     id: 'rec-3',
-    title: 'THE OTHERWORLDLY FAMILY MAN',
+    title: 'The Otherworldly Family Man',
     author: 'K-Story & Studio M',
     genre: 'Fantasy',
     subGenres: ['Isekai', 'Found Family', 'Magic'],
-    coverImage: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=600&auto=format&fit=crop&q=80',
-    summary: 'An ordinary chef awakens in a magical realm, building an unbreakable family of misfits.',
+    coverImage: otherworldlyFamilyCover,
+    summary: 'An ordinary chef awakens in a magical realm, protects a cursed child, and builds an unbreakable family.',
     rating: 9.87,
     viewsCount: '18.4M',
     subscribersCount: '920K',
-    subLabel: '99% Match',
-    subLabelColor: '#0A84FF',
+    subLabel: '10+ episodes',
+    subLabelColor: '#007AFF',
     matchScore: 99,
     recommendationReason: 'Trending #1 in Fantasy',
     dayOfWeek: 'MON',
     totalEpisodes: 65,
     episodes: [
-      { id: 'r3-1', number: 1, title: 'Episode 1: The Golden Portal', thumbnail: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=400&auto=format&fit=crop&q=80', date: 'Aug 24', likes: 24500, isFree: true, panels: SAMPLE_PANELS },
+      { id: 'r3-1', number: 1, title: 'Episode 1: The Golden Portal', thumbnail: otherworldlyFamilyBanner, date: 'Aug 24', likes: 24500, isFree: true, panels: SAMPLE_PANELS },
     ],
   },
   {
@@ -514,18 +532,18 @@ export const RECOMMENDED_WEBTOONS: WebtoonItem[] = [
     author: 'Violet Matter',
     genre: 'Thriller',
     subGenres: ['Action', 'Romance', 'Mafia'],
-    coverImage: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=600&auto=format&fit=crop&q=80',
+    coverImage: mafiaNannyCover,
     summary: 'An elite undercover bodyguard takes a job as the live-in nanny for a powerful crime boss.',
     rating: 9.89,
     viewsCount: '28.1M',
     subscribersCount: '1.4M',
-    subLabel: '10+ free episodes',
-    subLabelColor: '#0A84FF',
+    subLabel: '10+ episodes',
+    subLabelColor: '#007AFF',
     matchScore: 94,
     dayOfWeek: 'WED',
     totalEpisodes: 94,
     episodes: [
-      { id: 'r4-1', number: 1, title: 'Episode 1: The Interview', thumbnail: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80', date: 'Aug 12', likes: 31000, isFree: true, panels: SAMPLE_PANELS },
+      { id: 'r4-1', number: 1, title: 'Episode 1: The Interview', thumbnail: mafiaNannyCover, date: 'Aug 12', likes: 31000, isFree: true, panels: THRILLER_PANELS },
     ],
   }
 ];
@@ -543,5 +561,41 @@ export const ALL_WEBTOONS: WebtoonItem[] = [
   ...NEW_RELEASES_WEBTOONS,
   ...RECOMMENDED_WEBTOONS,
 ];
+
+export const CANONICAL_WEBTOON_IDS: Record<string, string> = {
+  'down-to-earth-continue': 'down-to-earth',
+  'trend-1': 'down-to-earth',
+  'the-mafia-nanny-continue': 'the-mafia-nanny',
+  'rec-4': 'the-mafia-nanny',
+  'rec-3': 'otherworldly-family-man',
+  'school-bus-graveyard-continue': 'trend-3',
+  'school-bus-graveyard': 'trend-3',
+  'grid-6': 'trend-5',
+  'grid-11': 'new-2',
+  'grid-12': 'new-1',
+};
+
+export function getCanonicalWebtoonId(bookId: string): string {
+  return CANONICAL_WEBTOON_IDS[bookId] || bookId;
+}
+
+export function resolveWebtoonById(bookId: string): WebtoonItem | undefined {
+  const canonicalId = getCanonicalWebtoonId(bookId);
+  return (
+    ALL_WEBTOONS.find((w) => w.id === canonicalId) ||
+    ALL_WEBTOONS.find((w) => w.id === bookId)
+  );
+}
+
+export const UNIQUE_WEBTOONS: WebtoonItem[] = ALL_WEBTOONS.filter(
+  (item, index, arr) => {
+    const canonicalId = getCanonicalWebtoonId(item.id);
+    return (
+      arr.findIndex((other) => getCanonicalWebtoonId(other.id) === canonicalId) ===
+      index
+    );
+  }
+);
+
 
 

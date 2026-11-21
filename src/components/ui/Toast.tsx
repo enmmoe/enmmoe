@@ -72,13 +72,13 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const renderIcon = (type: ToastType) => {
     switch (type) {
       case 'success':
-        return <CheckCircle2 className="w-4 h-4 text-[#007AFF] dark:text-[#0A84FF] shrink-0" />;
+        return <CheckCircle2 className="w-4 h-4 text-[#007AFF] shrink-0" />;
       case 'error':
         return <AlertCircle className="w-4 h-4 text-black dark:text-white shrink-0" />;
       case 'offline':
         return <WifiOff className="w-4 h-4 text-[#8E8E93] shrink-0" />;
       default:
-        return <Info className="w-4 h-4 text-[#007AFF] dark:text-[#0A84FF] shrink-0" />;
+        return <Info className="w-4 h-4 text-[#007AFF] shrink-0" />;
     }
   };
 
@@ -111,7 +111,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                     toast.onAction?.();
                     dismissToast(toast.id);
                   }}
-                  className="text-[13px] font-semibold text-[#007AFF] dark:text-[#0A84FF] px-2 py-0.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 shrink-0 cursor-pointer"
+                  className="text-[13px] font-semibold text-[#007AFF] px-2 py-0.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 shrink-0 cursor-pointer"
                 >
                   {toast.actionLabel}
                 </button>

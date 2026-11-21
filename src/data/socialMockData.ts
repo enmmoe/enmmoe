@@ -887,7 +887,7 @@ export const INITIAL_NOTIFICATIONS: NotificationItem[] = [
     type: 'follow',
     targetId: 'user-me',
     targetType: 'profile',
-    text: 'started following you.',
+    text: 'subscribed to you.',
     createdAt: Date.now() - 1000 * 60 * 180,
     isRead: true,
   },

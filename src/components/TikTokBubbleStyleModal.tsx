@@ -32,7 +32,7 @@ export const BUBBLE_STYLES: BubbleStyleDef[] = [
     name: 'Deep Blue',
     description: 'Rich high-contrast blue bubble with crisp rim',
     bubbleClass:
-      'bg-[#0051B3] text-white border border-[#0A84FF]/60 rounded-[20px] rounded-br-[6px] shadow-[0_2px_10px_rgba(0,122,255,0.22)] relative overflow-hidden',
+      'bg-[#0051B3] text-white border border-[#007AFF]/60 rounded-[20px] rounded-br-[6px] shadow-[0_2px_10px_rgba(0,122,255,0.22)] relative overflow-hidden',
     textClass: 'text-white font-medium',
     previewText: 'Deep',
     decorationPosition: 'top-left',
@@ -72,7 +72,7 @@ export const BUBBLE_STYLES: BubbleStyleDef[] = [
           style={{ width: `${size}px`, height: `${size}px` }}
         >
           <svg viewBox="0 0 24 24" fill="none" className="w-full h-full">
-            <path d="M4 12L14 4L11 12H20L10 20L13 12H4Z" fill="#0A84FF" />
+            <path d="M4 12L14 4L11 12H20L10 20L13 12H4Z" fill="#007AFF" />
           </svg>
         </div>
       );
@@ -108,7 +108,7 @@ export const BUBBLE_STYLES: BubbleStyleDef[] = [
     name: 'Soft Blue',
     description: 'Airy translucent blue bubble with subtle stroke',
     bubbleClass:
-      'bg-[#EAF3FF] dark:bg-[#0A84FF]/20 text-black dark:text-white border border-[#007AFF]/25 rounded-[20px] rounded-br-[6px] relative overflow-hidden',
+      'bg-[#EAF3FF] dark:bg-[#007AFF]/20 text-black dark:text-white border border-[#007AFF]/25 rounded-[20px] rounded-br-[6px] relative overflow-hidden',
     textClass: 'text-black dark:text-white font-normal',
     previewText: 'Soft',
     decorationPosition: 'top-right',
@@ -295,7 +295,7 @@ export const TikTokBubbleStyleModal: React.FC<TikTokBubbleStyleModalProps> = ({
               id="bubble-style-save-btn"
               type="button"
               onClick={handleSave}
-              className={`text-[17px] font-semibold tracking-normal cursor-pointer py-1.5 px-1 text-[#007AFF] dark:text-[#0A84FF] transition-opacity ${
+              className={`text-[17px] font-semibold tracking-normal cursor-pointer py-1.5 px-1 text-[#007AFF] transition-opacity ${
                 hasChanged ? 'opacity-100' : 'opacity-85 hover:opacity-100'
               }`}
             >
@@ -367,7 +367,7 @@ export const TikTokBubbleStyleModal: React.FC<TikTokBubbleStyleModalProps> = ({
                       isSelected
                         ? isLight
                           ? 'bg-[#F2F2F7] ring-1.5 ring-[#007AFF]'
-                          : 'bg-[#1C1C1E] ring-1.5 ring-[#0A84FF]'
+                          : 'bg-[#1C1C1E] ring-1.5 ring-[#007AFF]'
                         : isLight
                         ? 'bg-transparent hover:bg-black/5'
                         : 'bg-transparent hover:bg-white/5'
@@ -406,7 +406,7 @@ export const TikTokBubbleStyleModal: React.FC<TikTokBubbleStyleModalProps> = ({
                       </div>
 
                       {isSelected && (
-                        <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#007AFF] dark:bg-[#0A84FF] flex items-center justify-center text-white shadow-xs z-20">
+                        <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#007AFF] flex items-center justify-center text-white shadow-xs z-20">
                           <Check className="w-2.5 h-2.5 stroke-[3]" />
                         </div>
                       )}
@@ -415,7 +415,7 @@ export const TikTokBubbleStyleModal: React.FC<TikTokBubbleStyleModalProps> = ({
                     <span
                       className={`text-[12px] sm:text-[12.5px] text-center mt-2 truncate w-full px-0.5 ${
                         isSelected
-                          ? 'text-[#007AFF] dark:text-[#0A84FF] font-semibold'
+                          ? 'text-[#007AFF] font-semibold'
                           : isLight
                           ? 'text-[#3C3C43] group-hover:text-[#000000] font-normal'
                           : 'text-[#E5E5EA] group-hover:text-white font-normal'

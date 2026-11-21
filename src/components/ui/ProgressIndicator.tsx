@@ -17,7 +17,7 @@ export const ProgressBar: React.FC<{
       className={`w-full rounded-full overflow-hidden bg-black/[0.08] dark:bg-white/[0.15] ${heightClass} ${className}`}
     >
       <div
-        className="h-full bg-[#007AFF] dark:bg-[#0A84FF] rounded-full transition-all duration-300 ease-out"
+        className="h-full bg-[#007AFF] rounded-full transition-all duration-300 ease-out"
         style={{ width: `${pct}%` }}
       />
     </div>
@@ -30,6 +30,6 @@ export const InlineSpinner: React.FC<{ size?: number; className?: string }> = ({
 }) => (
   <Loader2
     style={{ width: size, height: size }}
-    className={`animate-spin text-[#007AFF] dark:text-[#0A84FF] ${className}`}
+    className={`animate-spin text-[#007AFF] ${className}`}
   />
 );

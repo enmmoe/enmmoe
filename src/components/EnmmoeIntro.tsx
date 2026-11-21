@@ -59,8 +59,8 @@ export const EnmmoeIntro: React.FC<EnmmoeIntroProps> = ({ onFinished }) => {
             }}
             className="flex items-center"
           >
-            <span className="text-[36px] sm:text-[42px] font-bold tracking-[-0.04em] lowercase text-black dark:text-white leading-none">
-              enm<span className="text-[#007AFF] dark:text-[#0A84FF]">moe</span>
+            <span className="text-[36px] sm:text-[42px] font-bold tracking-[-0.045em] lowercase text-black dark:text-white leading-none">
+              enm<span className="text-[#007AFF]">moe</span>
             </span>
           </motion.div>
         </motion.div>

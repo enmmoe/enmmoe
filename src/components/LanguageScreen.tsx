@@ -76,7 +76,7 @@ export const LanguageScreen: React.FC<LanguageScreenProps> = ({ onBack }) => {
         </div>
 
         {isSelected && (
-          <Check className="w-5 h-5 text-[#007AFF] dark:text-[#0A84FF] stroke-[2.4] shrink-0" />
+          <Check className="w-5 h-5 text-[#007AFF] stroke-[2.4] shrink-0" />
         )}
       </button>
     );
@@ -94,7 +94,7 @@ export const LanguageScreen: React.FC<LanguageScreenProps> = ({ onBack }) => {
             id="btn-language-back"
             type="button"
             onClick={onBack}
-            className="min-w-[44px] min-h-[44px] inline-flex items-center gap-0.5 px-2 text-[#007AFF] dark:text-[#0A84FF] cursor-pointer ios-press"
+            className="min-w-[44px] min-h-[44px] inline-flex items-center gap-0.5 px-2 text-[#007AFF] cursor-pointer ios-press"
             aria-label={t('cancel', 'Back')}
           >
             <ChevronLeft className="w-6 h-6 stroke-[2.2]" />

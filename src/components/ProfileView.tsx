@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   BookOpen,
@@ -28,7 +28,12 @@ import {
   INITIAL_SAVED_STORIES,
 } from '../data/achievementsData';
 import { INITIAL_CREATORS } from '../data/socialMockData';
-import { ALL_WEBTOONS, WebtoonItem } from '../data/webtoonData';
+import {
+  ALL_WEBTOONS,
+  WebtoonItem,
+  getCanonicalWebtoonId,
+  resolveWebtoonById,
+} from '../data/webtoonData';
 import { useLanguage } from '../utils/i18n';
 import { SettingsView } from './SettingsView';
 import {
@@ -53,6 +58,7 @@ import {
 
 export interface ProfileViewProps {
   currentUser: User;
+  creators?: User[];
   profileUser?:
     | (Partial<User> & {
         id: string;
@@ -86,10 +92,14 @@ export interface ProfileViewProps {
     avatar: string;
     isVerified?: boolean;
   }) => void;
+  subscribedWebtoons?: Record<string, boolean>;
+  onToggleSubscribe?: (webtoonId: string) => void;
+  isActive?: boolean;
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
   currentUser,
+  creators = INITIAL_CREATORS,
   profileUser,
   onOpenSettings,
   onOpenEditProfile,
@@ -101,6 +111,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onOpenBook,
   onOpenUserProfile,
   isFollowing,
+  subscribedWebtoons,
+  onToggleSubscribe,
+  isActive,
 }) => {
   const { t } = useLanguage();
   const { showToast } = useToast();
@@ -171,39 +184,60 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [completedStories] = useState<ReadingStoryItem[]>(INITIAL_COMPLETED_STORIES);
   const [savedStories] = useState<ReadingStoryItem[]>(INITIAL_SAVED_STORIES);
 
+  useEffect(() => {
+    if (isActive) {
+      setProgressTick((prev) => prev + 1);
+    }
+  }, [isActive]);
+
   // Merge static currently-reading list with live persisted reader progress
   const currentlyReading = useMemo<ReadingStoryItem[]>(() => {
     const progressMap = getAllReadingProgress();
     const baseMap = new Map<string, ReadingStoryItem>();
 
     INITIAL_CURRENTLY_READING.forEach((item) => {
-      const live = progressMap[item.webtoonId];
-      baseMap.set(item.webtoonId, {
+      const canonicalId = getCanonicalWebtoonId(item.webtoonId);
+      const live = progressMap[canonicalId] || progressMap[item.webtoonId];
+      baseMap.set(canonicalId, {
         ...item,
+        webtoonId: canonicalId,
         currentEpisode: live?.episodeNumber ?? item.currentEpisode,
         lastReadDate: live?.updatedAt ? 'Recently' : item.lastReadDate,
       });
     });
 
     Object.entries(progressMap).forEach(([webtoonId, prog]) => {
-      if (!baseMap.has(webtoonId)) {
-        const w = ALL_WEBTOONS.find((item) => item.id === webtoonId);
-        if (w) {
-          const pct = Math.min(100, Math.round((prog.episodeNumber / Math.max(1, w.totalEpisodes)) * 100));
-          baseMap.set(webtoonId, {
-            id: `live-${w.id}`,
-            webtoonId: w.id,
-            title: w.title,
-            author: w.author,
-            coverImage: w.coverImage,
+      const canonicalId = getCanonicalWebtoonId(webtoonId);
+      const w = resolveWebtoonById(canonicalId);
+      if (!w) return;
+      const pct = Math.min(
+        100,
+        Math.round((prog.episodeNumber / Math.max(1, w.totalEpisodes)) * 100)
+      );
+      const existing = baseMap.get(canonicalId);
+      if (existing) {
+        if (prog.updatedAt) {
+          baseMap.set(canonicalId, {
+            ...existing,
             currentEpisode: prog.episodeNumber,
-            totalEpisodes: w.totalEpisodes,
             progressPercentage: pct,
             lastReadDate: 'Recently',
-            genre: w.genre,
-            status: pct >= 100 ? 'completed' : 'currently_reading',
           });
         }
+      } else {
+        baseMap.set(canonicalId, {
+          id: `live-${w.id}`,
+          webtoonId: w.id,
+          title: w.title,
+          author: w.author,
+          coverImage: w.coverImage,
+          currentEpisode: prog.episodeNumber,
+          totalEpisodes: w.totalEpisodes,
+          progressPercentage: pct,
+          lastReadDate: 'Recently',
+          genre: w.genre,
+          status: pct >= 100 ? 'completed' : 'currently_reading',
+        });
       }
     });
 
@@ -232,11 +266,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   };
 
   const handleOpenReader = (webtoonId: string, episodeNumber: number = 1) => {
+    const canonicalId = getCanonicalWebtoonId(webtoonId);
     if (onOpenBook) {
-      onOpenBook(webtoonId, episodeNumber);
+      onOpenBook(canonicalId, episodeNumber);
       return;
     }
-    const found = ALL_WEBTOONS.find((w) => w.id === webtoonId) || ALL_WEBTOONS[0];
+    const found = resolveWebtoonById(canonicalId) || ALL_WEBTOONS[0];
     setActiveReadingWebtoon({ webtoon: found, episode: episodeNumber });
   };
 
@@ -266,8 +301,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const followingIds = currentUser.followingIds || [];
   const followListUsers =
     followSheetMode === 'following'
-      ? INITIAL_CREATORS.filter((c) => followingIds.includes(c.id))
-      : INITIAL_CREATORS;
+      ? isOtherUser
+        ? displayUser.followingIds
+          ? creators.filter((c) => displayUser.followingIds!.includes(c.id))
+          : creators.filter((c) => c.id !== displayUser.id)
+        : creators.filter((c) => followingIds.includes(c.id))
+      : creators.filter((c) => c.id !== displayUser.id);
 
   return (
     <div
@@ -283,7 +322,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               type="button"
               onClick={onBack}
               aria-label="Back"
-              className="min-w-[44px] min-h-[44px] -ml-2 inline-flex items-center gap-0.5 text-[#007AFF] dark:text-[#0A84FF] cursor-pointer ios-press"
+              className="min-w-[44px] min-h-[44px] -ml-2 inline-flex items-center gap-0.5 text-[#007AFF] cursor-pointer ios-press"
             >
               <ChevronLeft className="w-6 h-6 stroke-[2.2]" />
               <span className="text-[17px]">Back</span>
@@ -303,15 +342,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
           )}
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center -mr-2">
             {!isOtherUser && (
               <button
                 type="button"
                 onClick={() => setShowPrivacyModal(true)}
                 aria-label="Privacy settings"
-                className="w-10 h-10 rounded-full flex items-center justify-center text-[#8E8E93] hover:text-black dark:hover:text-white hover:bg-[#F2F2F7] dark:hover:bg-[#1C1C1E] cursor-pointer ios-press"
+                className="min-w-[44px] min-h-[44px] inline-flex items-center justify-center text-[#8E8E93] hover:text-black dark:hover:text-white cursor-pointer ios-press"
               >
-                <Shield className="w-[20px] h-[20px] stroke-[1.8]" />
+                <Shield className="w-[21px] h-[21px] stroke-[1.85]" />
               </button>
             )}
 
@@ -319,9 +358,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               type="button"
               onClick={handleShareProfile}
               aria-label="Share profile"
-              className="w-10 h-10 rounded-full flex items-center justify-center text-[#8E8E93] hover:text-black dark:hover:text-white hover:bg-[#F2F2F7] dark:hover:bg-[#1C1C1E] cursor-pointer ios-press"
+              className="min-w-[44px] min-h-[44px] inline-flex items-center justify-center text-[#8E8E93] hover:text-black dark:hover:text-white cursor-pointer ios-press"
             >
-              <Share2 className="w-[20px] h-[20px] stroke-[1.8]" />
+              <Share2 className="w-[21px] h-[21px] stroke-[1.85]" />
             </button>
 
             {!isOtherUser && (
@@ -333,9 +372,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   else setShowSettingsPage(true);
                 }}
                 aria-label={t('settings_title', 'Settings')}
-                className="w-10 h-10 rounded-full flex items-center justify-center text-black dark:text-white hover:bg-[#F2F2F7] dark:hover:bg-[#1C1C1E] cursor-pointer ios-press"
+                className="min-w-[44px] min-h-[44px] inline-flex items-center justify-center text-black dark:text-white cursor-pointer ios-press"
               >
-                <Settings className="w-[20px] h-[20px] stroke-[1.8]" />
+                <Settings className="w-[21px] h-[21px] stroke-[1.85]" />
               </button>
             )}
           </div>
@@ -381,7 +420,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   <span className="text-[18px] font-semibold block leading-tight">
                     {displayUser.followersCount ?? 1240}
                   </span>
-                  <span className="text-[13px] text-[#8E8E93]">Followers</span>
+                  <span className="text-[13px] text-[#8E8E93]">{t('subscribers', 'Subscribers')}</span>
                 </button>
                 <button
                   type="button"
@@ -393,7 +432,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       ? displayUser.followingCount ?? 115
                       : followingIds.length || displayUser.followingCount || 0}
                   </span>
-                  <span className="text-[13px] text-[#8E8E93]">Following</span>
+                  <span className="text-[13px] text-[#8E8E93]">{t('subscriptions', 'Subscriptions')}</span>
                 </button>
                 <div>
                   <span className="text-[18px] font-semibold block leading-tight">
@@ -425,12 +464,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 id="profile-btn-follow"
                 variant={isFollowed ? 'secondary' : 'primary'}
                 size="md"
+                aria-label={isFollowed ? t('unsubscribe', 'Unsubscribe') : t('subscribe', 'Subscribe')}
+                title={isFollowed ? t('unsubscribe', 'Unsubscribe') : t('subscribe', 'Subscribe')}
                 leftIcon={
                   isFollowed ? <Check className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />
                 }
                 onClick={() => onToggleFollow?.(displayUser.id)}
               >
-                {isFollowed ? 'Following' : 'Follow'}
+                {isFollowed ? t('subscribed', 'Subscribed') : t('subscribe', 'Subscribe')}
               </Button>
               <Button
                 id="profile-btn-message"
@@ -521,7 +562,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     onClick={() => setLibraryTab(sub.id)}
                     className={`px-3.5 py-1.5 rounded-full text-[13px] font-semibold transition-colors cursor-pointer ios-press ${
                       active
-                        ? 'bg-[#007AFF] dark:bg-[#0A84FF] text-white'
+                        ? 'bg-[#007AFF] text-white'
                         : 'bg-[#F2F2F7] dark:bg-[#1C1C1E] text-[#8E8E93] hover:text-black dark:hover:text-white'
                     }`}
                   >
@@ -582,7 +623,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center tabular-nums">
                 <div className="p-3 rounded-xl bg-white dark:bg-[#2C2C2E]">
-                  <p className="text-[20px] font-bold text-[#007AFF] dark:text-[#0A84FF]">
+                  <p className="text-[20px] font-bold text-[#007AFF]">
                     {totalSeriesCount}
                   </p>
                   <p className="text-[12px] text-[#8E8E93] mt-0.5">Series</p>
@@ -598,7 +639,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   <p className="text-[12px] text-[#8E8E93] mt-0.5">Views</p>
                 </div>
                 <div className="p-3 rounded-xl bg-white dark:bg-[#2C2C2E]">
-                  <p className="text-[20px] font-bold text-[#007AFF] dark:text-[#0A84FF] inline-flex items-center gap-1">
+                  <p className="text-[20px] font-bold text-[#007AFF] inline-flex items-center gap-1">
                     <Flame className="w-4 h-4 fill-current" />
                     18d
                   </p>
@@ -636,7 +677,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       onClick={() => setShowAchievementsModal(true)}
                       className={`w-28 shrink-0 rounded-2xl bg-white dark:bg-[#2C2C2E] p-2.5 text-center border cursor-pointer ios-press ${
                         isPinned
-                          ? 'border-[#007AFF]/40 dark:border-[#0A84FF]/40'
+                          ? 'border-[#007AFF]/40'
                           : 'border-black/[0.04] dark:border-white/[0.08]'
                       }`}
                     >
@@ -665,7 +706,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       <p
                         className={`text-[11px] ${
                           isPinned
-                            ? 'text-[#007AFF] dark:text-[#0A84FF] font-medium'
+                            ? 'text-[#007AFF] font-medium'
                             : 'text-[#8E8E93]'
                         }`}
                       >
@@ -723,20 +764,24 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         onClose={() => setShowBadgesExplanation(false)}
       />
 
-      {/* Followers / Following Bottom Sheet */}
+      {/* Subscribers / Subscriptions Bottom Sheet */}
       <BottomSheet
         isOpen={Boolean(followSheetMode)}
         onClose={() => setFollowSheetMode(null)}
-        title={followSheetMode === 'following' ? 'Following' : 'Followers'}
+        title={
+          followSheetMode === 'following'
+            ? t('subscriptions', 'Subscriptions')
+            : t('subscribers', 'Subscribers')
+        }
       >
         <div className="p-4 space-y-2.5">
           {followListUsers.length === 0 ? (
             <EmptyState
               icon={<Users className="w-6 h-6" />}
               title={
-                followSheetMode === 'following' ? 'Not following anyone yet' : 'No followers yet'
+                followSheetMode === 'following' ? 'No subscriptions yet' : 'No subscribers yet'
               }
-              description="Discover creators in Search to build your reading circle."
+              description="Discover creators in Search to build your subscriptions."
             />
           ) : (
             followListUsers.map((creator) => {
@@ -776,9 +821,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <Button
                       variant={followed ? 'secondary' : 'primary'}
                       size="sm"
+                      aria-label={followed ? `Unsubscribe from ${creator.name}` : `Subscribe to ${creator.name}`}
+                      title={followed ? t('unsubscribe', 'Unsubscribe') : t('subscribe', 'Subscribe')}
                       onClick={() => onToggleFollow(creator.id)}
                     >
-                      {followed ? 'Following' : 'Follow'}
+                      {followed ? t('subscribed', 'Subscribed') : t('subscribe', 'Subscribe')}
                     </Button>
                   )}
                 </div>
@@ -812,7 +859,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             setActiveReadingWebtoon(null);
             setProgressTick((prev) => prev + 1);
           }}
-          isSubscribed
+          isSubscribed={
+            subscribedWebtoons?.[getCanonicalWebtoonId(activeReadingWebtoon.webtoon.id)] ??
+            Boolean(activeReadingWebtoon.webtoon.isSubscribed)
+          }
+          onToggleSubscribe={onToggleSubscribe}
         />
       )}
 

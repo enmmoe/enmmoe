@@ -343,7 +343,7 @@ export interface ReportItem {
 }
 
 // Navigation Tab enum
-export type NavDestination = 'home' | 'messages' | 'create' | 'discover' | 'profile';
+export type NavDestination = 'home' | 'messages' | 'pulse' | 'discover' | 'profile';
 
 // Backward compatibility types for legacy components
 export interface RoomPlayer {

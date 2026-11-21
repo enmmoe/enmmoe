@@ -5,16 +5,16 @@ export const SkeletonBox: React.FC<{ className?: string }> = ({ className = '' }
 );
 
 export const HeroBannerSkeleton: React.FC = () => (
-  <div className="px-4 pt-3 pb-2">
-    <div className="w-full rounded-3xl aspect-[4/5] sm:aspect-[16/9] max-h-[460px] ios-skeleton" />
+  <div className="px-4 pt-2 pb-2">
+    <div className="w-full rounded-[20px] aspect-[3/4] sm:aspect-[16/9] max-h-[480px] ios-skeleton" />
   </div>
 );
 
 export const BookCardSkeleton: React.FC<{ horizontal?: boolean }> = ({ horizontal = false }) => (
-  <div className={horizontal ? 'w-[124px] shrink-0' : 'w-full'}>
-    <div className="aspect-[3/4] rounded-2xl ios-skeleton mb-2" />
+  <div className={horizontal ? 'w-[146px] sm:w-[164px] shrink-0' : 'w-full'}>
+    <div className="aspect-[2/3] rounded-[14px] ios-skeleton mb-2.5" />
     <div className="h-4 w-4/5 rounded-md ios-skeleton mb-1.5" />
-    <div className="h-3 w-1/2 rounded-md ios-skeleton" />
+    <div className="h-3 w-3/5 rounded-md ios-skeleton" />
   </div>
 );
 
@@ -32,14 +32,14 @@ export const ConversationRowSkeleton: React.FC = () => (
 );
 
 export const HomeFeedSkeleton: React.FC = () => (
-  <div className="space-y-6 pb-8">
+  <div className="space-y-8 pb-8">
     <HeroBannerSkeleton />
     <div className="space-y-3">
       <div className="px-4 flex items-center justify-between">
         <div className="h-6 w-40 rounded-lg ios-skeleton" />
         <div className="h-4 w-16 rounded-md ios-skeleton" />
       </div>
-      <div className="px-4 flex gap-3 overflow-hidden">
+      <div className="px-4 flex gap-3.5 overflow-hidden">
         {Array.from({ length: 4 }).map((_, i) => (
           <BookCardSkeleton key={i} horizontal />
         ))}
@@ -49,8 +49,8 @@ export const HomeFeedSkeleton: React.FC = () => (
       <div className="px-4 flex items-center justify-between">
         <div className="h-6 w-36 rounded-lg ios-skeleton" />
       </div>
-      <div className="px-4 grid grid-cols-3 sm:grid-cols-5 gap-3">
-        {Array.from({ length: 6 }).map((_, i) => (
+      <div className="px-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5">
+        {Array.from({ length: 4 }).map((_, i) => (
           <BookCardSkeleton key={i} />
         ))}
       </div>

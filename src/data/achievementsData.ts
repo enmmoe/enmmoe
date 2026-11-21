@@ -7,6 +7,10 @@ import devotedImg from '../assets/images/achievement_devoted_seven_1787992352425
 import veteranImg from '../assets/images/achievement_veteran_thirty_1787992365903.jpg';
 import authorImg from '../assets/images/achievement_author_pen_1787992381209.jpg';
 import prolificImg from '../assets/images/achievement_prolific_paper_1787992393913.jpg';
+import otherworldlyFamilyCover from '../assets/images/otherworldly_family_cover_1795183229679.jpg';
+import downToEarthCover from '../assets/images/down_to_earth_cover_1795183229891.jpg';
+import mafiaNannyCover from '../assets/images/mafia_nanny_cover_1795183230245.jpg';
+import villainessMarriageCover from '../assets/images/villainess_marriage_cover_1795183230558.jpg';
 
 export const INITIAL_ACHIEVEMENTS: AchievementItem[] = [
   {
@@ -236,7 +240,7 @@ export const INITIAL_ACHIEVEMENTS: AchievementItem[] = [
   {
     id: 'creator_patron',
     name: 'True Collector',
-    shortDescription: 'Follow and support 15 verified author creators',
+    shortDescription: 'Subscribe to and support 15 verified author creators',
     icon: '💎',
     category: 'collector',
     isUnlocked: true,
@@ -365,12 +369,12 @@ export const INITIAL_CURRENTLY_READING: ReadingStoryItem[] = [
   {
     id: 'cr-1',
     webtoonId: 'otherworldly-family-man',
-    title: 'THE OTHERWORLDLY FAMILY MAN',
+    title: 'The Otherworldly Family Man',
     author: 'K-Story & Studio M',
-    coverImage: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=800&auto=format&fit=crop&q=80',
-    currentEpisode: 14,
+    coverImage: otherworldlyFamilyCover,
+    currentEpisode: 1,
     totalEpisodes: 65,
-    progressPercentage: 21,
+    progressPercentage: 2,
     lastReadDate: 'Today',
     genre: 'Fantasy',
     status: 'currently_reading',
@@ -380,8 +384,8 @@ export const INITIAL_CURRENTLY_READING: ReadingStoryItem[] = [
     webtoonId: 'down-to-earth',
     title: 'Down To Earth',
     author: 'Pookie Senpai',
-    coverImage: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=800&auto=format&fit=crop&q=80',
-    currentEpisode: 84,
+    coverImage: downToEarthCover,
+    currentEpisode: 4,
     totalEpisodes: 180,
     progressPercentage: 46,
     lastReadDate: 'Yesterday',
@@ -393,8 +397,8 @@ export const INITIAL_CURRENTLY_READING: ReadingStoryItem[] = [
     webtoonId: 'the-mafia-nanny',
     title: 'The Mafia Nanny',
     author: 'Violet Matter',
-    coverImage: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&auto=format&fit=crop&q=80',
-    currentEpisode: 58,
+    coverImage: mafiaNannyCover,
+    currentEpisode: 2,
     totalEpisodes: 94,
     progressPercentage: 61,
     lastReadDate: '3 days ago',
@@ -409,7 +413,7 @@ export const INITIAL_COMPLETED_STORIES: ReadingStoryItem[] = [
     webtoonId: 'father-i-dont-want-marriage',
     title: "Father, I don't Want This Marriage",
     author: 'Hong Heesu & Roal',
-    coverImage: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=600&auto=format&fit=crop&q=80',
+    coverImage: villainessMarriageCover,
     currentEpisode: 110,
     totalEpisodes: 110,
     progressPercentage: 100,
@@ -420,7 +424,7 @@ export const INITIAL_COMPLETED_STORIES: ReadingStoryItem[] = [
   },
   {
     id: 'comp-2',
-    webtoonId: 'grid-6',
+    webtoonId: 'trend-5',
     title: 'Plus One',
     author: 'Minty Candy',
     coverImage: 'https://images.unsplash.com/photo-1516627145497-ae6968895b74?w=600&auto=format&fit=crop&q=80',
@@ -437,7 +441,7 @@ export const INITIAL_COMPLETED_STORIES: ReadingStoryItem[] = [
 export const INITIAL_SAVED_STORIES: ReadingStoryItem[] = [
   {
     id: 'sav-1',
-    webtoonId: 'school-bus-graveyard',
+    webtoonId: 'trend-3',
     title: 'School Bus Graveyard',
     author: 'Red',
     coverImage: 'https://images.unsplash.com/photo-1509281373149-e957c6296406?w=600&auto=format&fit=crop&q=80',
@@ -450,7 +454,7 @@ export const INITIAL_SAVED_STORIES: ReadingStoryItem[] = [
   },
   {
     id: 'sav-2',
-    webtoonId: 'grid-11',
+    webtoonId: 'new-2',
     title: 'Diner For Adas',
     author: 'Maya S.',
     coverImage: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=600&auto=format&fit=crop&q=80',
@@ -463,7 +467,7 @@ export const INITIAL_SAVED_STORIES: ReadingStoryItem[] = [
   },
   {
     id: 'sav-3',
-    webtoonId: 'grid-12',
+    webtoonId: 'new-1',
     title: 'A Spell For A Smith',
     author: 'V. R. Thorne',
     coverImage: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80',

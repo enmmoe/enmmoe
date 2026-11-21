@@ -34,7 +34,7 @@ export const AchievementShowcaseModal: React.FC<AchievementShowcaseModalProps> =
         <div className="p-4 rounded-2xl bg-[#F2F2F7] dark:bg-[#2C2C2E] space-y-2.5">
           <div className="flex items-center justify-between">
             <span className="text-[15px] font-semibold">Overall Progress</span>
-            <span className="text-[15px] font-semibold text-[#007AFF] dark:text-[#0A84FF] tabular-nums">
+            <span className="text-[15px] font-semibold text-[#007AFF] tabular-nums">
               {earnedCount} / {totalMax}
             </span>
           </div>
@@ -62,7 +62,7 @@ export const AchievementShowcaseModal: React.FC<AchievementShowcaseModalProps> =
                         }`}
                       />
                     ) : (
-                      <Trophy className="w-6 h-6 text-[#007AFF] dark:text-[#0A84FF]" />
+                      <Trophy className="w-6 h-6 text-[#007AFF]" />
                     )}
                   </div>
 
@@ -84,7 +84,7 @@ export const AchievementShowcaseModal: React.FC<AchievementShowcaseModalProps> =
                       aria-label={isPinned ? 'Unpin achievement' : 'Pin achievement'}
                       className={`h-8 px-2.5 rounded-full text-[12px] font-semibold inline-flex items-center gap-1 transition-colors cursor-pointer ios-press ${
                         isPinned
-                          ? 'bg-[#007AFF] dark:bg-[#0A84FF] text-white'
+                          ? 'bg-[#007AFF] text-white'
                           : 'bg-white dark:bg-[#1C1C1E] text-[#8E8E93] hover:text-black dark:hover:text-white'
                       }`}
                     >
@@ -94,7 +94,7 @@ export const AchievementShowcaseModal: React.FC<AchievementShowcaseModalProps> =
                   )}
 
                   {ach.isUnlocked ? (
-                    <div className="w-8 h-8 rounded-full bg-[#007AFF] dark:bg-[#0A84FF] flex items-center justify-center text-white">
+                    <div className="w-8 h-8 rounded-full bg-[#007AFF] flex items-center justify-center text-white">
                       <Check className="w-4 h-4 stroke-[3]" />
                     </div>
                   ) : (

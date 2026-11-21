@@ -45,13 +45,13 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
     switch (type) {
       case 'like':
       case 'reaction':
-        return <Heart className="w-3 h-3 text-[#007AFF] dark:text-[#0A84FF] fill-current" />;
+        return <Heart className="w-3 h-3 text-[#007AFF] fill-current" />;
       case 'comment':
-        return <MessageCircle className="w-3 h-3 text-[#007AFF] dark:text-[#0A84FF]" />;
+        return <MessageCircle className="w-3 h-3 text-[#007AFF]" />;
       case 'follow':
         return <UserPlus className="w-3 h-3 text-black dark:text-white" />;
       default:
-        return <Sparkles className="w-3 h-3 text-[#007AFF] dark:text-[#0A84FF]" />;
+        return <Sparkles className="w-3 h-3 text-[#007AFF]" />;
     }
   };
 
@@ -59,12 +59,12 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
     <BottomSheet
       isOpen={isOpen}
       onClose={onClose}
-      title={t('notifications_title', 'Notifications')}
+      title="Activity"
       headerRight={
         <button
           type="button"
           onClick={onMarkAllAsRead}
-          className="text-[14px] font-medium text-[#007AFF] dark:text-[#0A84FF] inline-flex items-center gap-1 px-2 py-1 rounded-lg cursor-pointer ios-press"
+          className="text-[14px] font-medium text-[#007AFF] inline-flex items-center gap-1 px-2 py-1 rounded-lg cursor-pointer ios-press"
         >
           <CheckCheck className="w-4 h-4" />
           <span>{t('mark_all_read', 'Read all')}</span>
@@ -93,7 +93,7 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
           <EmptyState
             icon={<Bell className="w-7 h-7" />}
             title={t('no_notifications', 'No Notifications')}
-            description="Likes, replies, new followers, and series updates will appear here."
+            description="Likes, replies, new subscribers, and series updates will appear here."
           />
         ) : (
           <div className="divide-y divide-black/[0.06] dark:divide-white/[0.08]">

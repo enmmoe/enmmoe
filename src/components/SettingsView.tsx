@@ -346,7 +346,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             id="settings-back-btn"
             type="button"
             onClick={onBack}
-            className="min-w-[44px] min-h-[44px] inline-flex items-center gap-0.5 px-2 text-[#007AFF] dark:text-[#0A84FF] cursor-pointer ios-press"
+            className="min-w-[44px] min-h-[44px] inline-flex items-center gap-0.5 px-2 text-[#007AFF] cursor-pointer ios-press"
           >
             <ChevronLeft className="w-6 h-6 stroke-[2.2]" />
             <span className="text-[17px]">Back</span>
@@ -360,7 +360,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             id="settings-header-save-btn"
             type="button"
             onClick={handleSaveAll}
-            className="min-h-[44px] px-3 text-[17px] font-semibold text-[#007AFF] dark:text-[#0A84FF] cursor-pointer ios-press"
+            className="min-h-[44px] px-3 text-[17px] font-semibold text-[#007AFF] cursor-pointer ios-press"
           >
             {t('save_button', 'Save')}
           </button>
@@ -380,7 +380,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <button
               type="button"
               onClick={onOpenEditProfile}
-              className="text-[15px] font-medium text-[#007AFF] dark:text-[#0A84FF] cursor-pointer ios-press"
+              className="text-[15px] font-medium text-[#007AFF] cursor-pointer ios-press"
             >
               Change Profile Icon
             </button>
@@ -430,8 +430,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               className="w-full min-h-[48px] px-4 py-3 flex items-center justify-between gap-3 text-left cursor-pointer hover:bg-black/[0.02] dark:hover:bg-white/[0.03]"
             >
               <div className="flex items-center gap-3 min-w-0">
-                <div className="w-8 h-8 rounded-lg bg-[#007AFF]/12 dark:bg-[#0A84FF]/15 text-[#007AFF] dark:text-[#0A84FF] flex items-center justify-center shrink-0">
-                  <Mail className="w-4 h-4 stroke-[2]" />
+                <div className="w-8 h-8 rounded-lg bg-[#007AFF]/12 dark:bg-[#007AFF]/18 text-[#007AFF] flex items-center justify-center shrink-0">
+                  <Mail className="w-[17px] h-[17px] stroke-[1.9]" />
                 </div>
                 <span className="text-[17px]">{t('settings_email', 'Email & Verification')}</span>
               </div>
@@ -440,7 +440,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   {email || 'Add'}
                 </span>
                 {isEmailVerified && (
-                  <CheckCircle2 className="w-4 h-4 text-[#007AFF] dark:text-[#0A84FF] shrink-0" />
+                  <CheckCircle2 className="w-4 h-4 text-[#007AFF] shrink-0" />
                 )}
                 <ChevronRight className="w-4 h-4 text-[#C7C7CC] shrink-0" />
               </div>
@@ -454,10 +454,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 className="w-full min-h-[48px] px-4 py-3 flex items-center justify-between text-left cursor-pointer hover:bg-black/[0.02] dark:hover:bg-white/[0.03]"
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-[#007AFF]/12 dark:bg-[#0A84FF]/15 text-[#007AFF] dark:text-[#0A84FF] flex items-center justify-center shrink-0">
-                    <LogOut className="w-4 h-4 stroke-[2]" />
+                  <div className="w-8 h-8 rounded-lg bg-[#007AFF]/12 dark:bg-[#007AFF]/18 text-[#007AFF] flex items-center justify-center shrink-0">
+                    <LogOut className="w-[17px] h-[17px] stroke-[1.9]" />
                   </div>
-                  <span className="text-[17px] text-[#007AFF] dark:text-[#0A84FF] font-medium">
+                  <span className="text-[17px] text-[#007AFF] font-medium">
                     {t('logout', 'Log Out / Switch Account')}
                   </span>
                 </div>
@@ -476,7 +476,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div className="min-h-[48px] px-4 py-3 flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-[#F2F2F7] dark:bg-[#2C2C2E] text-black dark:text-white flex items-center justify-center">
-                  <Moon className="w-4 h-4 stroke-[2]" />
+                  <Moon className="w-[17px] h-[17px] stroke-[1.9]" />
                 </div>
                 <span className="text-[17px]">Dark Appearance</span>
               </div>
@@ -494,8 +494,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               className="w-full min-h-[48px] px-4 py-3 flex items-center justify-between gap-3 text-left cursor-pointer hover:bg-black/[0.02] dark:hover:bg-white/[0.03]"
             >
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-[#007AFF]/12 dark:bg-[#0A84FF]/15 text-[#007AFF] dark:text-[#0A84FF] flex items-center justify-center shrink-0">
-                  <BookOpen className="w-4 h-4 stroke-[2]" />
+                <div className="w-8 h-8 rounded-lg bg-[#007AFF]/12 dark:bg-[#007AFF]/18 text-[#007AFF] flex items-center justify-center shrink-0">
+                  <BookOpen className="w-[17px] h-[17px] stroke-[1.9]" />
                 </div>
                 <span className="text-[17px]">Reader Preferences</span>
               </div>
@@ -514,8 +514,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               className="w-full min-h-[48px] px-4 py-3 flex items-center justify-between gap-3 text-left cursor-pointer hover:bg-black/[0.02] dark:hover:bg-white/[0.03]"
             >
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-[#007AFF]/12 dark:bg-[#0A84FF]/15 text-[#007AFF] dark:text-[#0A84FF] flex items-center justify-center shrink-0">
-                  <Globe className="w-4 h-4 stroke-[2]" />
+                <div className="w-8 h-8 rounded-lg bg-[#007AFF]/12 dark:bg-[#007AFF]/18 text-[#007AFF] flex items-center justify-center shrink-0">
+                  <Globe className="w-[17px] h-[17px] stroke-[1.9]" />
                 </div>
                 <span className="text-[17px]">{t('settings_language', 'Language')}</span>
               </div>
@@ -540,8 +540,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               className="w-full min-h-[48px] px-4 py-3 flex items-center justify-between gap-3 text-left cursor-pointer hover:bg-black/[0.02] dark:hover:bg-white/[0.03]"
             >
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-[#007AFF]/12 dark:bg-[#0A84FF]/15 text-[#007AFF] dark:text-[#0A84FF] flex items-center justify-center shrink-0">
-                  <Shield className="w-4 h-4 stroke-[2]" />
+                <div className="w-8 h-8 rounded-lg bg-[#007AFF]/12 dark:bg-[#007AFF]/18 text-[#007AFF] flex items-center justify-center shrink-0">
+                  <Shield className="w-[17px] h-[17px] stroke-[1.9]" />
                 </div>
                 <span className="text-[17px]">Privacy Controls</span>
               </div>
@@ -556,7 +556,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             >
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-[#F2F2F7] dark:bg-[#2C2C2E] text-[#8E8E93] flex items-center justify-center shrink-0">
-                  <UserX className="w-4 h-4 stroke-[2]" />
+                  <UserX className="w-[17px] h-[17px] stroke-[1.9]" />
                 </div>
                 <span className="text-[17px]">{t('settings_blocked', 'Blocked Users')}</span>
               </div>
@@ -586,7 +586,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             >
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-[#F2F2F7] dark:bg-[#2C2C2E] text-black dark:text-white flex items-center justify-center shrink-0">
-                  <BellOff className="w-4 h-4 stroke-[2]" />
+                  <BellOff className="w-[17px] h-[17px] stroke-[1.9]" />
                 </div>
                 <span className="text-[17px]">{t('settings_mute', 'Notifications & Mute')}</span>
               </div>
@@ -600,8 +600,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               className="w-full min-h-[48px] px-4 py-3 flex items-center justify-between gap-3 text-left cursor-pointer hover:bg-black/[0.02] dark:hover:bg-white/[0.03]"
             >
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-[#007AFF]/12 dark:bg-[#0A84FF]/15 text-[#007AFF] dark:text-[#0A84FF] flex items-center justify-center shrink-0">
-                  <Bookmark className="w-4 h-4 stroke-[2]" />
+                <div className="w-8 h-8 rounded-lg bg-[#007AFF]/12 dark:bg-[#007AFF]/18 text-[#007AFF] flex items-center justify-center shrink-0">
+                  <Bookmark className="w-[17px] h-[17px] stroke-[1.9]" />
                 </div>
                 <span className="text-[17px]">{t('settings_favourite', 'Saved Items')}</span>
               </div>
@@ -629,7 +629,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             >
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-[#F2F2F7] dark:bg-[#2C2C2E] text-black dark:text-white flex items-center justify-center shrink-0">
-                  <HelpCircle className="w-4 h-4 stroke-[2]" />
+                  <HelpCircle className="w-[17px] h-[17px] stroke-[1.9]" />
                 </div>
                 <span className="text-[17px]">Help &amp; Feedback</span>
               </div>
@@ -644,7 +644,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             >
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-[#F2F2F7] dark:bg-[#2C2C2E] text-[#8E8E93] flex items-center justify-center shrink-0">
-                  <Info className="w-4 h-4 stroke-[2]" />
+                  <Info className="w-[17px] h-[17px] stroke-[1.9]" />
                 </div>
                 <span className="text-[17px]">About enmmoe</span>
               </div>
@@ -662,7 +662,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             >
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-[#F2F2F7] dark:bg-[#2C2C2E] text-black dark:text-white flex items-center justify-center shrink-0">
-                  <Trash2 className="w-4 h-4 stroke-[2]" />
+                  <Trash2 className="w-[17px] h-[17px] stroke-[1.9]" />
                 </div>
                 <span className="text-[17px] font-semibold text-black dark:text-white">
                   {t('settings_delete', 'Delete Account')}
@@ -700,7 +700,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <span
                 className={`text-[13px] font-semibold ${
                   isEmailVerified
-                    ? 'text-[#007AFF] dark:text-[#0A84FF]'
+                    ? 'text-[#007AFF]'
                     : 'text-[#8E8E93]'
                 }`}
               >
@@ -865,7 +865,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     onClick={() => handleUpdateReaderPrefs({ ...readerPrefs, bgMode: opt.id })}
                     className={`min-h-[44px] py-2.5 px-2 rounded-xl text-[13px] font-semibold border transition-all cursor-pointer ios-press ${
                       active
-                        ? 'border-[#007AFF] bg-[#007AFF]/10 text-[#007AFF] dark:text-[#0A84FF]'
+                        ? 'border-[#007AFF] bg-[#007AFF]/10 text-[#007AFF]'
                         : 'border-black/[0.06] dark:border-white/[0.08] bg-[#F2F2F7] dark:bg-[#2C2C2E] text-black dark:text-white'
                     }`}
                   >
@@ -897,7 +897,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     }
                     className={`py-2 rounded-lg text-[14px] font-semibold transition-all cursor-pointer ${
                       active
-                        ? 'bg-white dark:bg-[#1C1C1E] text-[#007AFF] dark:text-[#0A84FF] shadow-xs'
+                        ? 'bg-white dark:bg-[#1C1C1E] text-[#007AFF] shadow-xs'
                         : 'text-[#8E8E93]'
                     }`}
                   >

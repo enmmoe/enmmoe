@@ -37,13 +37,15 @@ export const SmartImage: React.FC<SmartImageProps> = ({
 
   return (
     <div
-      className={`relative overflow-hidden bg-[#F2F2F7] dark:bg-[#1C1C1E] ${aspectClassName} ${containerClassName}`}
+      className={`relative overflow-hidden ${
+        preserveNaturalAspect ? 'bg-transparent' : 'bg-[#F2F2F7] dark:bg-[#1C1C1E]'
+      } ${aspectClassName} ${containerClassName}`}
     >
       {/* Shimmer skeleton while loading */}
       {status === 'loading' && (
         <div
           aria-hidden="true"
-          className={`ios-skeleton ${preserveNaturalAspect ? 'min-h-[260px] w-full' : 'absolute inset-0'}`}
+          className={`ios-skeleton ${preserveNaturalAspect ? 'min-h-[320px] w-full' : 'absolute inset-0'}`}
         />
       )}
 
@@ -65,7 +67,7 @@ export const SmartImage: React.FC<SmartImageProps> = ({
                 e.stopPropagation();
                 setRetryCount((c) => c + 1);
               }}
-              className="mt-1 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white dark:bg-[#2C2C2E] border border-black/[0.08] dark:border-white/[0.1] text-[12px] font-medium text-[#007AFF] dark:text-[#0A84FF] active:scale-95 transition-transform cursor-pointer"
+              className="mt-1 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white dark:bg-[#2C2C2E] border border-black/[0.08] dark:border-white/[0.1] text-[12px] font-medium text-[#007AFF] active:scale-95 transition-transform cursor-pointer"
             >
               <RefreshCw className="w-3 h-3" />
               <span>Retry</span>
@@ -84,7 +86,7 @@ export const SmartImage: React.FC<SmartImageProps> = ({
           className={`${
             preserveNaturalAspect ? 'w-full h-auto block' : 'w-full h-full object-cover'
           } transition-opacity duration-300 ease-out ${
-            status === 'loaded' ? 'opacity-100' : 'opacity-0'
+            status === 'loaded' ? 'opacity-100' : 'opacity-0 absolute inset-0'
           } ${className}`}
           {...rest}
         />

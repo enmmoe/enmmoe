@@ -1,6 +1,6 @@
 import { User } from '../types';
 
-export type RouteType = 'home' | 'discover' | 'messages' | 'profile' | 'book' | 'chapter' | 'settings';
+export type RouteType = 'home' | 'discover' | 'pulse' | 'messages' | 'profile' | 'book' | 'chapter' | 'settings';
 
 export interface BaseRoute {
   key: string;
@@ -15,6 +15,10 @@ export interface HomeRoute extends BaseRoute {
 
 export interface DiscoverRoute extends BaseRoute {
   type: 'discover';
+}
+
+export interface PulseRoute extends BaseRoute {
+  type: 'pulse';
 }
 
 export interface MessagesRoute extends BaseRoute {
@@ -48,6 +52,7 @@ export interface SettingsRoute extends BaseRoute {
 export type AppRoute =
   | HomeRoute
   | DiscoverRoute
+  | PulseRoute
   | MessagesRoute
   | ProfileRoute
   | BookRoute
@@ -88,6 +93,15 @@ export function parsePathToRoute(pathname: string): AppRoute {
       type: 'discover',
       path: '/discover',
       title: 'Discover',
+    };
+  }
+
+  if (first === 'pulse' || first === 'world' || first === 'studio') {
+    return {
+      key: 'pulse',
+      type: 'pulse',
+      path: '/pulse',
+      title: 'Pulse',
     };
   }
 

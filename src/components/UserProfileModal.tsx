@@ -15,7 +15,7 @@ export interface UserProfileModalProps {
   onSendMessage?: (userId: string) => void;
   onOpenEditProfile?: () => void;
   onOpenBadgeInfo?: () => void;
-  onOpenStoryReader?: (storyId: string) => void;
+  onOpenStoryReader?: (storyId: string, initialEpisodeNumber?: number) => void;
   isLight?: boolean;
 }
 

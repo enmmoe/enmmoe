@@ -6,10 +6,11 @@ interface NavigationContextValue {
   currentRoute: AppRoute;
   historyStack: AppRoute[];
   canGoBack: boolean;
-  activeTab: 'home' | 'discover' | 'messages' | 'profile';
+  activeTab: 'home' | 'discover' | 'pulse' | 'messages' | 'profile';
   navigate: (route: AppRoute, options?: { replace?: boolean; skipBrowserPush?: boolean }) => void;
   openHome: () => void;
   openDiscover: () => void;
+  openPulse: () => void;
   openMessages: (conversationId?: string) => void;
   openProfile: (
     userId: string,
@@ -30,6 +31,7 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // Track scroll container and saved scroll positions
   const scrollContainerRef = useRef<HTMLElement | null>(null);
   const scrollPositionsRef = useRef<Record<string, number>>({});
+  const pushedCountRef = useRef(0);
 
   // Initialize route from current browser window.location.pathname
   const [currentRoute, setCurrentRoute] = useState<AppRoute>(() => {
@@ -38,6 +40,9 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
     return { key: 'home', type: 'home', path: '/', title: 'enmmoe' };
   });
+
+  const currentRouteRef = useRef(currentRoute);
+  currentRouteRef.current = currentRoute;
 
   // History stack for in-app navigation
   const [historyStack, setHistoryStack] = useState<AppRoute[]>(() => {
@@ -57,13 +62,13 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, []);
 
   const saveCurrentScroll = useCallback(() => {
-    if (scrollContainerRef.current && currentRoute) {
-      scrollPositionsRef.current[currentRoute.key] = scrollContainerRef.current.scrollTop;
+    if (scrollContainerRef.current && currentRouteRef.current) {
+      scrollPositionsRef.current[currentRouteRef.current.key] = scrollContainerRef.current.scrollTop;
     }
-  }, [currentRoute]);
+  }, []);
 
   const restoreScroll = useCallback((routeKey?: string) => {
-    const key = routeKey || currentRoute.key;
+    const key = routeKey || currentRouteRef.current.key;
     const targetScroll = scrollPositionsRef.current[key] ?? 0;
     // Restore on next animation frame to ensure DOM is painted
     requestAnimationFrame(() => {
@@ -71,23 +76,24 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         scrollContainerRef.current.scrollTop = targetScroll;
       }
     });
-  }, [currentRoute.key]);
+  }, []);
 
   // Navigate to a new route
   const navigate = useCallback(
     (newRoute: AppRoute, options?: { replace?: boolean; skipBrowserPush?: boolean }) => {
+      const active = currentRouteRef.current;
       // Do not trigger unnecessary navigation, history pushes, or re-renders on identical active route
       if (
         !options?.replace &&
-        currentRoute.key === newRoute.key &&
-        currentRoute.path === newRoute.path
+        active.key === newRoute.key &&
+        active.path === newRoute.path
       ) {
         return;
       }
 
       // 1. Save scroll position of outgoing screen
       if (scrollContainerRef.current) {
-        scrollPositionsRef.current[currentRoute.key] = scrollContainerRef.current.scrollTop;
+        scrollPositionsRef.current[active.key] = scrollContainerRef.current.scrollTop;
       }
 
       // 2. Update browser history API
@@ -96,10 +102,12 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           window.history.replaceState({ route: newRoute }, '', newRoute.path);
         } else {
           window.history.pushState({ route: newRoute }, '', newRoute.path);
+          pushedCountRef.current += 1;
         }
       }
 
       // 3. Update internal screen state and stack
+      currentRouteRef.current = newRoute;
       setCurrentRoute(newRoute);
       setHistoryStack((prev) => {
         if (options?.replace) {
@@ -125,34 +133,44 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
       });
     },
-    [currentRoute]
+    []
   );
 
   // In-App and Hardware Back handler
   const goBack = useCallback(() => {
     // Save current scroll
     if (scrollContainerRef.current) {
-      scrollPositionsRef.current[currentRoute.key] = scrollContainerRef.current.scrollTop;
+      scrollPositionsRef.current[currentRouteRef.current.key] = scrollContainerRef.current.scrollTop;
+    }
+
+    if (pushedCountRef.current > 0 && historyStack.length > 1 && typeof window !== 'undefined') {
+      pushedCountRef.current = Math.max(0, pushedCountRef.current - 1);
+      window.history.back();
+      return;
     }
 
     if (historyStack.length > 1) {
-      // Trigger native browser back so Android back button and in-app back behave identically
+      const target = historyStack[historyStack.length - 2];
+      setHistoryStack((prev) => prev.slice(0, Math.max(1, prev.length - 1)));
       if (typeof window !== 'undefined') {
-        window.history.back();
+        window.history.replaceState({ route: target }, '', target.path);
       }
-    } else {
-      // Fallback to Home if at the root of the stack
-      const homeRoute: AppRoute = { key: 'home', type: 'home', path: '/', title: 'enmmoe' };
-      navigate(homeRoute, { replace: true });
+      currentRouteRef.current = target;
+      setCurrentRoute(target);
+      return;
     }
-  }, [currentRoute, historyStack.length, navigate]);
+
+    // Fallback to Home if at the root of the stack
+    const homeRoute: AppRoute = { key: 'home', type: 'home', path: '/', title: 'enmmoe' };
+    navigate(homeRoute, { replace: true });
+  }, [historyStack, navigate]);
 
   // Handle browser / Android back and forward events (`popstate`)
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
       // Save scroll of screen being exited
       if (scrollContainerRef.current) {
-        scrollPositionsRef.current[currentRoute.key] = scrollContainerRef.current.scrollTop;
+        scrollPositionsRef.current[currentRouteRef.current.key] = scrollContainerRef.current.scrollTop;
       }
 
       let targetRoute: AppRoute;
@@ -162,6 +180,7 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         targetRoute = parsePathToRoute(window.location.pathname);
       }
 
+      currentRouteRef.current = targetRoute;
       setCurrentRoute(targetRoute);
 
       setHistoryStack((prev) => {
@@ -188,7 +207,7 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     return () => {
       window.removeEventListener('popstate', handlePopState);
     };
-  }, [currentRoute.key]);
+  }, []);
 
   // Convenience navigation shortcuts
   const openHome = useCallback(() => {
@@ -197,6 +216,10 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const openDiscover = useCallback(() => {
     navigate({ key: 'discover', type: 'discover', path: '/discover', title: 'Discover' });
+  }, [navigate]);
+
+  const openPulse = useCallback(() => {
+    navigate({ key: 'pulse', type: 'pulse', path: '/pulse', title: 'Pulse' });
   }, [navigate]);
 
   const openMessages = useCallback((conversationId?: string) => {
@@ -255,11 +278,13 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [navigate]);
 
   // Compute active bottom navigation tab based on current screen
-  let activeTab: 'home' | 'discover' | 'messages' | 'profile' = 'home';
+  let activeTab: 'home' | 'discover' | 'pulse' | 'messages' | 'profile' = 'home';
   if (currentRoute.type === 'messages') {
     activeTab = 'messages';
   } else if (currentRoute.type === 'discover') {
     activeTab = 'discover';
+  } else if (currentRoute.type === 'pulse') {
+    activeTab = 'pulse';
   } else if (
     currentRoute.type === 'profile' &&
     (currentRoute.userId === 'me' || currentRoute.userId === 'user-me')
@@ -281,6 +306,7 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         navigate,
         openHome,
         openDiscover,
+        openPulse,
         openMessages,
         openProfile,
         openBook,

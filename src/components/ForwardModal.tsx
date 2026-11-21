@@ -110,7 +110,7 @@ export const ForwardModal: React.FC<ForwardModalProps> = ({
                     <Avatar src={person.avatar} name={person.name} size="lg" />
                     {isSent && (
                       <div className="absolute inset-0 rounded-full bg-black/55 flex items-center justify-center text-white">
-                        <Check className="w-6 h-6 text-[#0A84FF] stroke-[3]" />
+                        <Check className="w-6 h-6 text-[#007AFF] stroke-[3]" />
                       </div>
                     )}
                   </div>

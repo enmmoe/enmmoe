@@ -463,7 +463,7 @@ export const InstagramEmojiPickerModal: React.FC<InstagramEmojiPickerModalProps>
                     onClick={() => handleSlotClick(idx)}
                     className={`relative py-1 rounded-xl text-xl flex items-center justify-center transition-all cursor-pointer select-none active:scale-90 ${
                       isSelectedSlot
-                        ? 'ring-2 ring-[#0A84FF] bg-[#0A84FF]/20 scale-105 shadow-sm'
+                        ? 'ring-2 ring-[#007AFF] bg-[#007AFF]/20 scale-105 shadow-sm'
                         : isLight
                         ? 'hover:bg-white/80'
                         : 'hover:bg-white/10'
@@ -513,7 +513,7 @@ export const InstagramEmojiPickerModal: React.FC<InstagramEmojiPickerModalProps>
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search..."
-              className={`w-full pl-8 pr-7 py-1.5 text-xs rounded-xl focus:outline-none focus:ring-1 focus:ring-[#0A84FF] transition-colors border ${
+              className={`w-full pl-8 pr-7 py-1.5 text-xs rounded-xl focus:outline-none focus:ring-1 focus:ring-[#007AFF] transition-colors border ${
                 isLight
                   ? 'bg-[#F2F2F7] text-[#000000] placeholder-zinc-400 border-zinc-200'
                   : 'bg-[#2C2C2E] text-[#FFFFFF] placeholder-[#8E8E93] border-white/10'
@@ -546,7 +546,7 @@ export const InstagramEmojiPickerModal: React.FC<InstagramEmojiPickerModalProps>
                   }}
                   className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 transition-all cursor-pointer border ${
                     isActive
-                      ? 'bg-[#0A84FF] text-white border-[#0A84FF] shadow-sm'
+                      ? 'bg-[#007AFF] text-white border-[#007AFF] shadow-sm'
                       : isLight
                       ? 'bg-[#F2F2F7] text-zinc-600 hover:text-black border-zinc-200'
                       : 'bg-[#2C2C2E] text-zinc-400 hover:text-white border-white/5'

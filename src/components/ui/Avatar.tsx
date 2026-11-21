@@ -76,7 +76,7 @@ export const Avatar: React.FC<AvatarProps> = ({
       {isOnline && (
         <span
           aria-label="Online"
-          className={`absolute bottom-0 right-0 rounded-full bg-[#007AFF] dark:bg-[#0A84FF] border-white dark:border-black ${DOT_MAP[size]}`}
+          className={`absolute bottom-0 right-0 rounded-full bg-[#007AFF] border-white dark:border-black ${DOT_MAP[size]}`}
         />
       )}
     </div>

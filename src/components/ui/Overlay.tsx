@@ -144,7 +144,7 @@ export const Dialog: React.FC<DialogProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="py-3 text-[17px] font-normal text-[#007AFF] dark:text-[#0A84FF] hover:bg-black/[0.04] dark:hover:bg-white/[0.05] cursor-pointer"
+              className="py-3 text-[17px] font-normal text-[#007AFF] hover:bg-black/[0.04] dark:hover:bg-white/[0.05] cursor-pointer"
             >
               {cancelLabel}
             </button>
@@ -157,7 +157,7 @@ export const Dialog: React.FC<DialogProps> = ({
               className={`py-3 text-[17px] hover:bg-black/[0.04] dark:hover:bg-white/[0.05] cursor-pointer ${
                 destructive
                   ? 'font-bold text-black dark:text-white'
-                  : 'font-semibold text-[#007AFF] dark:text-[#0A84FF]'
+                  : 'font-semibold text-[#007AFF]'
               }`}
             >
               {confirmLabel}
