@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { CornerDownRight, Flag, Heart, MessageCircle, Send, X } from 'lucide-react';
 import { PostComment } from '../types';
-import { useLanguage } from '../utils/i18n';
+import { formatLocalizedTime, useLanguage } from '../utils/i18n';
+import { EmojiText } from './AppleEmoji';
 import { Avatar, BottomSheet, EmptyState, VerifiedBadge } from './ui';
 
 interface CommentDrawerProps {
@@ -31,7 +32,7 @@ export const CommentDrawer: React.FC<CommentDrawerProps> = ({
   onReportComment,
   onOpenUserProfile,
 }) => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [commentText, setCommentText] = useState('');
   const [replyingTo, setReplyingTo] = useState<{ id: string; username: string } | null>(null);
   const [sortBy, setSortBy] = useState<'top' | 'newest'>('newest');
@@ -101,10 +102,7 @@ export const CommentDrawer: React.FC<CommentDrawerProps> = ({
               {comment.authorVerified && <VerifiedBadge size={13} />}
             </button>
             <span className="text-[11px] text-[#8E8E93] tabular-nums shrink-0">
-              {new Date(comment.createdAt).toLocaleTimeString([], {
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
+              {formatLocalizedTime(comment.createdAt, language)}
             </span>
           </div>
           <p className="text-[15px] leading-snug break-words">
@@ -113,7 +111,7 @@ export const CommentDrawer: React.FC<CommentDrawerProps> = ({
                 @{comment.replyToUsername}
               </span>
             )}
-            {comment.text}
+            <EmojiText text={comment.text} emojiSize={16} />
           </p>
         </div>
 
@@ -127,7 +125,7 @@ export const CommentDrawer: React.FC<CommentDrawerProps> = ({
           >
             <Heart className={`w-3.5 h-3.5 ${comment.isLiked ? 'fill-current' : ''}`} />
             <span className="tabular-nums">
-              {comment.likesCount > 0 ? comment.likesCount : 'Like'}
+              {comment.likesCount > 0 ? comment.likesCount : t('like', 'Like')}
             </span>
           </button>
 
@@ -204,19 +202,19 @@ export const CommentDrawer: React.FC<CommentDrawerProps> = ({
           )}
         </div>
 
-        <div className="sticky bottom-0 px-4 py-3 bg-white dark:bg-[#1C1C1E] border-t border-black/[0.06] dark:border-white/[0.08]">
+        <div className="sticky bottom-0 px-4 py-3 bg-white dark:bg-[#1C1C1E]">
           {replyingTo && (
             <div className="flex items-center justify-between px-3 py-1.5 mb-2 rounded-xl bg-[#F2F2F7] dark:bg-[#2C2C2E] text-[13px] text-[#8E8E93]">
               <div className="flex items-center gap-1.5">
                 <CornerDownRight className="w-3.5 h-3.5 text-[#007AFF]" />
                 <span>
-                  Replying to <strong className="text-black dark:text-white">@{replyingTo.username}</strong>
+                  {t('replying_to', 'Replying to')} <strong className="text-black dark:text-white">@{replyingTo.username}</strong>
                 </span>
               </div>
               <button
                 type="button"
                 onClick={() => setReplyingTo(null)}
-                aria-label="Cancel reply"
+                aria-label={t('cancel', 'Cancel')}
                 className="text-[#8E8E93] hover:text-black dark:hover:text-white cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
@@ -231,7 +229,7 @@ export const CommentDrawer: React.FC<CommentDrawerProps> = ({
               onChange={(e) => setCommentText(e.target.value)}
               placeholder={
                 replyingTo
-                  ? `Reply to @${replyingTo.username}...`
+                  ? `${t('reply', 'Reply')} @${replyingTo.username}...`
                   : t('write_comment', 'Add a comment...')
               }
               className="flex-1 h-10 rounded-full bg-[#F2F2F7] dark:bg-[#2C2C2E] px-4 text-[15px] text-black dark:text-white placeholder:text-[#8E8E93] outline-none focus:ring-2 focus:ring-[#007AFF]/25"
@@ -239,7 +237,7 @@ export const CommentDrawer: React.FC<CommentDrawerProps> = ({
             <button
               type="submit"
               disabled={!commentText.trim()}
-              aria-label="Send comment"
+              aria-label={t('post_comment', 'Post')}
               className="w-10 h-10 rounded-full bg-[#007AFF] text-white flex items-center justify-center disabled:opacity-35 cursor-pointer ios-press"
             >
               <Send className="w-4 h-4" />

@@ -7,7 +7,6 @@ import {
   Ban,
   BellOff,
   Check,
-  CheckCheck,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -15,7 +14,9 @@ import {
   EyeOff,
   Flag,
   Languages,
+  Loader2,
   Lock,
+  Menu,
   MessageCircle,
   MoreHorizontal,
   Palette,
@@ -26,6 +27,7 @@ import {
   Send,
   ShieldCheck,
   Smile,
+  SmilePlus,
   Sparkles,
   SquarePen,
   Trash2,
@@ -36,11 +38,11 @@ import {
 } from 'lucide-react';
 import { SocialConversation, SocialMessage, Story, User } from '../types';
 import { INITIAL_CREATORS } from '../data/socialMockData';
-import { useLanguage } from '../utils/i18n';
+import { formatLocalizedTime, useLanguage } from '../utils/i18n';
 import { translateMessageText } from '../utils/translator';
-import { soundFX } from '../utils/audio';
 import { triggerHaptic } from '../utils/telegram';
 import { safeStorage } from '../utils/storage';
+import { AppleEmoji, EmojiText } from './AppleEmoji';
 import {
   Avatar,
   BottomSheet,
@@ -63,6 +65,8 @@ import {
   TikTokBubbleStyleModal,
   getBubbleStyle,
 } from './TikTokBubbleStyleModal';
+import { StoriesBar } from './StoriesBar';
+import { StoryAuthorGroup } from '../utils/storyMedia';
 
 interface MessagesHubViewProps {
   currentUser: User;
@@ -76,14 +80,35 @@ interface MessagesHubViewProps {
     targetUserData?: Partial<User> & { id: string; name: string; username: string; avatar: string; isVerified?: boolean }
   ) => void;
   onOpenStory?: (storyIndex: number) => void;
+  onOpenAuthorStory?: (authorId: string, group?: StoryAuthorGroup) => void;
   onOpenCreateStory?: () => void;
   onSendMessage: (convId: string, text: string, replyTo?: any) => void;
   onReactMessage: (convId: string, messageId: string, emoji: string) => void;
-  onDeleteMessage: (convId: string, messageId: string) => void;
+  onDeleteMessage: (
+    convId: string,
+    messageId: string,
+    mode?: 'unsend' | 'delete_for_me'
+  ) =>
+    | void
+    | boolean
+    | { ok: boolean; deletedForEveryone: boolean; error?: string }
+    | Promise<void | boolean | { ok: boolean; deletedForEveryone: boolean; error?: string }>;
   onForwardMessage?: (message: SocialMessage) => void;
   onBackToList?: () => void;
   onUserTyping?: (convId: string, isTyping: boolean) => void;
   onToggleFollow?: (userId: string) => void;
+  onRequestAction?: (convId: string, action: 'accept' | 'decline' | 'block' | 'spam') => void;
+  onToggleBlockUser?: (targetUserId: string, block: boolean) => void;
+  onReportTarget?: (targetType: 'conversation' | 'message' | 'account', targetId: string, reason: string) => void;
+  onUpdatePrivacy?: (updates: Partial<User>) => void;
+  onCreateGroupConversation?: (title: string, memberIds: string[]) => void;
+  onOpenUserProfile?: (user: {
+    id: string;
+    name: string;
+    username: string;
+    avatar: string;
+    isVerified?: boolean;
+  }) => void;
   isTabActive?: boolean;
 }
 
@@ -97,6 +122,151 @@ export function formatClockTime(timestamp: number): string {
 
 export function formatChatTimestamp(timestamp: number): string {
   return formatClockTime(timestamp);
+}
+
+export interface DeleteMessageDialogConfig {
+  canDeleteForEveryone: boolean;
+  isGroup: boolean;
+  recipientName: string;
+  alsoDeleteLabel: string | null;
+}
+
+export function getDeleteMessageDialogConfig(
+  conversation: SocialConversation | undefined,
+  message: SocialMessage | null,
+  currentUserId: string,
+  nicknameOverride?: string
+): DeleteMessageDialogConfig {
+  if (!conversation || !message) {
+    return {
+      canDeleteForEveryone: false,
+      isGroup: false,
+      recipientName: '',
+      alsoDeleteLabel: null,
+    };
+  }
+  const isGroup = conversation.type === 'group';
+  const otherMembers = (conversation.participants || []).filter((p) => p.id !== currentUserId);
+  const recipientName = isGroup
+    ? otherMembers.length === 1
+      ? otherMembers[0].name
+      : conversation.title || 'everyone'
+    : nicknameOverride || otherMembers[0]?.name || 'this user';
+
+  const isOwnMsg = message.senderId === currentUserId;
+  const canDeleteForEveryone = isOwnMsg && otherMembers.length > 0;
+
+  let alsoDeleteLabel: string | null = null;
+  if (canDeleteForEveryone) {
+    if (isGroup) {
+      alsoDeleteLabel =
+        otherMembers.length === 1
+          ? `Also delete for ${otherMembers[0].name}`
+          : 'Also delete for everyone';
+    } else {
+      alsoDeleteLabel = `Also delete for ${recipientName}`;
+    }
+  }
+
+  return {
+    canDeleteForEveryone,
+    isGroup,
+    recipientName,
+    alsoDeleteLabel,
+  };
+}
+
+export interface MessageMenuAnchor {
+  top: number;
+  left: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+  isMine: boolean;
+}
+
+export function computeFloatingMessageMenuLayout(
+  anchor: MessageMenuAnchor,
+  viewportW: number,
+  viewportH: number,
+  isMoreView = false
+) {
+  const EDGE_MARGIN = 12;
+  const TOP_SAFE = 16;
+  const BOTTOM_SAFE = 16;
+  const BAR_HEIGHT = 46;
+  const GAP = 8;
+  const MENU_EST_HEIGHT = isMoreView ? 104 : 304;
+
+  const vw = Math.max(320, viewportW || 390);
+  const vh = Math.max(420, viewportH || 844);
+
+  const clamp = (val: number, min: number, max: number) =>
+    Math.min(Math.max(val, min), Math.max(min, max));
+
+  // Compact Instagram width: ~48-52% of typical phone screen width, capped cleanly
+  const menuWidth = Math.round(
+    Math.min(238, Math.max(188, vw * 0.5), vw - EDGE_MARGIN * 2)
+  );
+  const reactionBarWidth = Math.round(Math.min(312, vw - EDGE_MARGIN * 2));
+
+  const rawMenuLeft = anchor.isMine ? anchor.right - menuWidth : anchor.left;
+  const rawBarLeft = anchor.isMine ? anchor.right - reactionBarWidth : anchor.left;
+
+  const menuLeft = Math.round(
+    clamp(rawMenuLeft, EDGE_MARGIN, vw - menuWidth - EDGE_MARGIN)
+  );
+  const reactionBarLeft = Math.round(
+    clamp(rawBarLeft, EDGE_MARGIN, vw - reactionBarWidth - EDGE_MARGIN)
+  );
+
+  const barAboveBubbleTop = anchor.top - BAR_HEIGHT - GAP;
+  const menuBelowBubbleTop = anchor.bottom + GAP;
+  const stackAboveMenuTop = anchor.top - GAP - MENU_EST_HEIGHT;
+  const stackAboveBarTop = stackAboveMenuTop - GAP - BAR_HEIGHT;
+
+  let reactionBarTop: number;
+  let menuTop: number;
+
+  if (
+    barAboveBubbleTop >= TOP_SAFE &&
+    menuBelowBubbleTop + MENU_EST_HEIGHT <= vh - BOTTOM_SAFE
+  ) {
+    // Default Instagram-like placement: reaction bar right above bubble, menu right below bubble
+    reactionBarTop = barAboveBubbleTop;
+    menuTop = menuBelowBubbleTop;
+  } else if (stackAboveBarTop >= TOP_SAFE) {
+    // Bubble is low on screen: place [reaction bar] + [menu] neatly above bubble
+    menuTop = Math.min(stackAboveMenuTop, vh - BOTTOM_SAFE - MENU_EST_HEIGHT);
+    reactionBarTop = menuTop - GAP - BAR_HEIGHT;
+  } else if (menuBelowBubbleTop + MENU_EST_HEIGHT <= vh - BOTTOM_SAFE) {
+    // Bubble is near very top: clamp reaction bar safely inside top & push menu below bar/bubble
+    reactionBarTop = TOP_SAFE;
+    menuTop = Math.min(
+      Math.max(menuBelowBubbleTop, reactionBarTop + BAR_HEIGHT + GAP),
+      vh - BOTTOM_SAFE - MENU_EST_HEIGHT
+    );
+  } else {
+    // Tight viewport fallback: keep bar strictly above menu and clamp within safe vertical bounds
+    const minMenuTop = TOP_SAFE + BAR_HEIGHT + GAP;
+    const maxMenuTop = Math.max(minMenuTop, vh - BOTTOM_SAFE - MENU_EST_HEIGHT);
+    menuTop = clamp(
+      anchor.top > vh * 0.5 ? stackAboveMenuTop : menuBelowBubbleTop,
+      minMenuTop,
+      maxMenuTop
+    );
+    reactionBarTop = Math.max(TOP_SAFE, menuTop - GAP - BAR_HEIGHT);
+  }
+
+  return {
+    menuWidth,
+    reactionBarWidth,
+    menuLeft,
+    reactionBarLeft,
+    reactionBarTop: Math.round(reactionBarTop),
+    menuTop: Math.round(menuTop),
+  };
 }
 
 const CHAT_THEMES = [
@@ -135,6 +305,7 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
   onSelectConversation,
   onStartNewConversation,
   onOpenStory,
+  onOpenAuthorStory,
   onOpenCreateStory,
   onSendMessage,
   onReactMessage,
@@ -143,6 +314,12 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
   onBackToList,
   onUserTyping,
   onToggleFollow,
+  onRequestAction,
+  onToggleBlockUser,
+  onReportTarget,
+  onUpdatePrivacy,
+  onCreateGroupConversation,
+  onOpenUserProfile,
   isTabActive = true,
 }) => {
   const { t, language } = useLanguage();
@@ -170,14 +347,20 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
   const [showScrollBottomBtn, setShowScrollBottomBtn] = useState(false);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Message context menu & translation
+  // Message context menu, deletion dialog & translation
   const [selectedMenuMessage, setSelectedMenuMessage] = useState<SocialMessage | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<MessageMenuAnchor | null>(null);
+  const [showMoreMenuActions, setShowMoreMenuActions] = useState(false);
+  const [pendingDeleteMessage, setPendingDeleteMessage] = useState<SocialMessage | null>(null);
+  const [deleteForEveryoneChecked, setDeleteForEveryoneChecked] = useState(false);
+  const [isDeletingMessage, setIsDeletingMessage] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [emojiPickerTarget, setEmojiPickerTarget] = useState<'reaction' | 'composer'>('reaction');
   const [quickReactions, setQuickReactions] = useState<string[]>(() => getStoredQuickReactions());
   const [translationMap, setTranslationMap] = useState<
-    Record<string, { translatedText: string; isTranslated: boolean }>
+    Record<string, { translatedText: string; isVisible: boolean }>
   >({});
+  const [translatingIds, setTranslatingIds] = useState<Record<string, boolean>>({});
 
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isLongPressTriggeredRef = useRef<boolean>(false);
@@ -220,9 +403,12 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
   const [isBlockDialogOpen, setIsBlockDialogOpen] = useState(false);
   const [isReportSheetOpen, setIsReportSheetOpen] = useState(false);
   const [reportReason, setReportReason] = useState('Harassment or bullying');
+  const [reportTargetId, setReportTargetId] = useState<string>('');
+  const [reportTargetType, setReportTargetType] = useState<'conversation' | 'message'>('conversation');
+  const [viewportBottomInset, setViewportBottomInset] = useState(0);
 
-  const [readReceipts, setReadReceipts] = useState(true);
-  const [typingIndicatorsEnabled, setTypingIndicatorsEnabled] = useState(true);
+  const readReceipts = currentUser.readReceiptsEnabled !== false;
+  const typingIndicatorsEnabled = currentUser.typingIndicatorsEnabled !== false;
 
   // Inspected profile modal
   const [isProfileOverviewOpen, setIsProfileOverviewOpen] = useState(false);
@@ -236,12 +422,29 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
   const messagesStreamRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const pressOriginRef = useRef<{ x: number; y: number } | null>(null);
 
   useLayoutEffect(() => {
     if (isTabActive && !activeConversationId && inboxListScrollRef.current) {
       inboxListScrollRef.current.scrollTop = savedInboxScrollTopRef.current;
     }
   }, [isTabActive, activeConversationId]);
+
+  useEffect(() => {
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    if (!vv) return;
+    const handleViewportResize = () => {
+      const keyboardHeight = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      setViewportBottomInset(keyboardHeight > 80 ? keyboardHeight : 0);
+    };
+    handleViewportResize();
+    vv.addEventListener('resize', handleViewportResize);
+    vv.addEventListener('scroll', handleViewportResize);
+    return () => {
+      vv.removeEventListener('resize', handleViewportResize);
+      vv.removeEventListener('scroll', handleViewportResize);
+    };
+  }, []);
 
   // Persist maps
   useEffect(() => safeStorage.setJSON('social_conv_muted', mutedConvs), [mutedConvs]);
@@ -253,15 +456,21 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
 
   const activeConversation = allConversations.find((c) => c.id === activeConversationId);
   const activeConvId = activeConversation?.id || '';
+  const isGroup = activeConversation?.type === 'group';
   const partner = activeConversation?.participants[0];
   const customNickname = activeConvId ? nicknames[activeConvId] : null;
   const displayName =
     customNickname ||
-    (activeConversation?.type === 'group' ? activeConversation.title : partner?.name || 'Chat');
+    (isGroup ? activeConversation.title : partner?.name || 'Chat');
 
   const isCurrentMuted = Boolean(activeConvId && mutedConvs[activeConvId]);
-  const isCurrentBlocked = Boolean(activeConvId && blockedConvs[activeConvId]);
-  const isCurrentPinned = Boolean(activeConvId && pinnedConvs[activeConvId]);
+  const isCurrentBlocked = Boolean(
+    (partner?.id && (currentUser.blockedUserIds || []).includes(partner.id)) ||
+      (activeConvId && blockedConvs[activeConvId])
+  );
+  const isCurrentPinned = Boolean(
+    activeConvId && (pinnedConvs[activeConvId] ?? activeConversation?.isPinned)
+  );
   const currentThemeName = activeConvId ? chatThemes[activeConvId] || 'iOS Blue' : 'iOS Blue';
   const activeThemeConfig =
     CHAT_THEMES.find((th) => th.name === currentThemeName || th.id === currentThemeName) ||
@@ -269,7 +478,8 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
   const currentDisappearing = activeConvId ? disappearingByConv[activeConvId] || 'off' : 'off';
 
   const isOtherUserTyping = Boolean(
-    activeConversation?.isTyping &&
+    !isCurrentBlocked &&
+      activeConversation?.isTyping &&
       activeConversation?.typingUserId !== currentUser.id &&
       (!activeConversation?.typingUserName || activeConversation.typingUserName !== currentUser.name)
   );
@@ -287,19 +497,31 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
     }
   }, [activeConversationId]);
 
-  // Auto-scroll to bottom on new message
+  // Auto-scroll to bottom on new message, typing, or keyboard open
   useEffect(() => {
     try {
       messagesEndRef.current?.scrollIntoView?.({ behavior: 'smooth' });
     } catch {}
-  }, [activeConversation?.messages?.length, isOtherUserTyping]);
+  }, [activeConversationId, activeConversation?.messages?.length, isOtherUserTyping, viewportBottomInset]);
 
   const handleOpenUserProfile = (
     targetUser?: (Partial<User> & { id: string; name: string; username: string; avatar: string; isVerified?: boolean }) | null
   ) => {
     if (!targetUser) return;
-    soundFX.playClick();
     triggerHaptic('light');
+    if (onOpenUserProfile) {
+      const fullCreator = creators.find((c) => c.id === targetUser.id);
+      onOpenUserProfile({
+        ...fullCreator,
+        ...targetUser,
+        id: targetUser.id,
+        name: targetUser.name || fullCreator?.name || displayName,
+        username: targetUser.username || fullCreator?.username || 'creator',
+        avatar: targetUser.avatar || fullCreator?.avatar || '',
+        isVerified: targetUser.isVerified ?? fullCreator?.isVerified,
+      });
+      return;
+    }
     setInspectedUser(targetUser);
     setIsProfileOverviewOpen(true);
   };
@@ -308,7 +530,6 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
   const handleComposeSelectUser = (
     target: Partial<User> & { id: string; name: string; username: string; avatar: string; isVerified?: boolean }
   ) => {
-    soundFX.playClick();
     setIsComposeOpen(false);
     setComposeSearch('');
     setCustomUsername('');
@@ -347,16 +568,181 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
     onSelectConversation(created.id);
   };
 
-  // Message Long-Press & Menu
-  const startLongPress = (msg: SocialMessage) => {
+  const closeMessageMenu = () => {
+    setSelectedMenuMessage(null);
+    setMenuAnchor(null);
+    setShowMoreMenuActions(false);
+  };
+
+  const openMessageMenu = (
+    msg: SocialMessage,
+    isMine: boolean,
+    targetEl?: HTMLElement | null
+  ) => {
+    const rect = targetEl?.getBoundingClientRect();
+    const fallbackW = typeof window !== 'undefined' ? window.innerWidth : 390;
+    const fallbackH = typeof window !== 'undefined' ? window.innerHeight : 844;
+    setMenuAnchor(
+      rect && rect.width > 0
+        ? {
+            top: rect.top,
+            left: rect.left,
+            right: rect.right,
+            bottom: rect.bottom,
+            width: rect.width,
+            height: rect.height,
+            isMine,
+          }
+        : {
+            top: fallbackH * 0.42,
+            left: isMine ? fallbackW * 0.45 : 16,
+            right: isMine ? fallbackW - 16 : fallbackW * 0.58,
+            bottom: fallbackH * 0.48,
+            width: fallbackW * 0.4,
+            height: 44,
+            isMine,
+          }
+    );
+    setShowMoreMenuActions(false);
+    setSelectedMenuMessage(msg);
+  };
+
+  useEffect(() => {
+    if (!selectedMenuMessage || showEmojiPicker) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeMessageMenu();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedMenuMessage, showEmojiPicker]);
+
+  const closeDeleteDialog = () => {
+    if (isDeletingMessage) return;
+    setPendingDeleteMessage(null);
+    setDeleteForEveryoneChecked(false);
+  };
+
+  useEffect(() => {
+    if (!pendingDeleteMessage) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isDeletingMessage) {
+        setPendingDeleteMessage(null);
+        setDeleteForEveryoneChecked(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [pendingDeleteMessage, isDeletingMessage]);
+
+  const deleteDialogConfig = useMemo(
+    () =>
+      getDeleteMessageDialogConfig(
+        activeConversation,
+        pendingDeleteMessage,
+        currentUser.id,
+        !isGroup && activeConvId ? nicknames[activeConvId] : undefined
+      ),
+    [activeConversation, pendingDeleteMessage, currentUser.id, isGroup, activeConvId, nicknames]
+  );
+
+  const handleConfirmDeleteMessage = async () => {
+    if (!pendingDeleteMessage || !activeConversation || isDeletingMessage) return;
+    const targetMsg = pendingDeleteMessage;
+    const requestEveryone =
+      deleteDialogConfig.canDeleteForEveryone && deleteForEveryoneChecked;
+    const mode: 'unsend' | 'delete_for_me' = requestEveryone ? 'unsend' : 'delete_for_me';
+
+    setIsDeletingMessage(true);
+    try {
+      const rawResult = await Promise.resolve(
+        onDeleteMessage(activeConversation.id, targetMsg.id, mode)
+      );
+
+      let succeeded = true;
+      let deletedForEveryone = mode === 'unsend';
+      let errorMsg: string | undefined;
+
+      if (typeof rawResult === 'boolean') {
+        succeeded = rawResult;
+        deletedForEveryone = rawResult && mode === 'unsend';
+      } else if (rawResult && typeof rawResult === 'object') {
+        succeeded = rawResult.ok !== false;
+        deletedForEveryone = rawResult.deletedForEveryone === true;
+        errorMsg = rawResult.error;
+      }
+
+      if (!succeeded || (mode === 'unsend' && !deletedForEveryone)) {
+        showToast(
+          errorMsg ||
+            t(
+              'delete_everyone_failed',
+              'Could not delete this message for the other participant.'
+            ),
+          { type: 'error', durationMs: 2400 }
+        );
+        return;
+      }
+
+      setExtraConvs((prev) =>
+        prev.map((c) => {
+          if (c.id !== activeConversation.id) return c;
+          const remaining = (c.messages || []).filter((m) => m.id !== targetMsg.id);
+          return { ...c, messages: remaining, lastMessage: remaining[remaining.length - 1] };
+        })
+      );
+
+      setPendingDeleteMessage(null);
+      setDeleteForEveryoneChecked(false);
+
+      if (deletedForEveryone) {
+        showToast(
+          deleteDialogConfig.isGroup
+            ? t('deleted_for_everyone', 'Deleted for everyone')
+            : `${t('deleted_for_you_and', 'Deleted for you and')} ${deleteDialogConfig.recipientName}`,
+          { type: 'info', durationMs: 2000 }
+        );
+      } else {
+        showToast(t('deleted_for_you', 'Deleted for you'), {
+          type: 'info',
+          durationMs: 1800,
+        });
+      }
+    } finally {
+      setIsDeletingMessage(false);
+    }
+  };
+
+  // Message Long-Press & Menu (never triggers on normal tap or scroll drag)
+  const startLongPress = (
+    msg: SocialMessage,
+    clientX?: number,
+    clientY?: number,
+    targetEl?: HTMLElement | null,
+    isMine = false
+  ) => {
     isLongPressTriggeredRef.current = false;
+    pressOriginRef.current =
+      typeof clientX === 'number' && typeof clientY === 'number'
+        ? { x: clientX, y: clientY }
+        : null;
     if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
     longPressTimerRef.current = setTimeout(() => {
       isLongPressTriggeredRef.current = true;
-      soundFX.playClick();
       triggerHaptic('medium');
-      setSelectedMenuMessage(msg);
+      openMessageMenu(msg, isMine, targetEl);
     }, 380);
+  };
+
+  const handleLongPressMove = (clientX?: number, clientY?: number) => {
+    if (pressOriginRef.current && typeof clientX === 'number' && typeof clientY === 'number') {
+      const dx = Math.abs(clientX - pressOriginRef.current.x);
+      const dy = Math.abs(clientY - pressOriginRef.current.y);
+      if (dx > 8 || dy > 8) {
+        cancelLongPress();
+      }
+    }
   };
 
   const cancelLongPress = () => {
@@ -364,6 +750,7 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
+    pressOriginRef.current = null;
   };
 
   // Composer Input
@@ -393,7 +780,6 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     if (onUserTyping) onUserTyping(activeConversationId, false);
 
-    soundFX.playClick();
     triggerHaptic('light');
     onSendMessage(
       activeConversationId,
@@ -412,68 +798,96 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
   };
 
   const handleTranslate = async (msg: SocialMessage) => {
-    const existing = translationMap[msg.id];
-    if (existing?.isTranslated) {
-      setTranslationMap((prev) => ({
-        ...prev,
-        [msg.id]: { ...prev[msg.id], isTranslated: false },
-      }));
-      setSelectedMenuMessage(null);
-      return;
-    }
+    const cacheKey = `${msg.id}:${language}`;
+    const existing = translationMap[cacheKey];
     if (existing?.translatedText) {
       setTranslationMap((prev) => ({
         ...prev,
-        [msg.id]: { ...prev[msg.id], isTranslated: true },
+        [cacheKey]: { ...prev[cacheKey], isVisible: !prev[cacheKey].isVisible },
       }));
-      setSelectedMenuMessage(null);
+      closeMessageMenu();
       return;
     }
+    if (translatingIds[cacheKey]) return;
 
+    closeMessageMenu();
+    setTranslatingIds((prev) => ({ ...prev, [cacheKey]: true }));
     try {
-      const result = await translateMessageText({ text: msg.text, targetLanguage: language });
+      const result = await translateMessageText({
+        messageId: msg.id,
+        text: msg.text,
+        targetLanguage: language,
+      });
       setTranslationMap((prev) => ({
         ...prev,
-        [msg.id]: { translatedText: result.translatedText, isTranslated: true },
+        [cacheKey]: { translatedText: result.translatedText, isVisible: true },
       }));
-    } catch {
-      showToast('Translation unavailable right now', { type: 'error' });
+    } catch (err: any) {
+      showToast(
+        err?.message || t('translation_unavailable', 'Translation failed. Please try again.'),
+        { type: 'error' }
+      );
+    } finally {
+      setTranslatingIds((prev) => {
+        const next = { ...prev };
+        delete next[cacheKey];
+        return next;
+      });
     }
-    setSelectedMenuMessage(null);
   };
 
   const handleCopy = async (text: string) => {
     try {
       await navigator.clipboard?.writeText?.(text);
-      showToast('Copied to clipboard', { type: 'success', durationMs: 1800 });
+      showToast(t('copied_to_clipboard', 'Copied to clipboard'), { type: 'success', durationMs: 1800 });
     } catch {
-      showToast('Unable to copy text', { type: 'error' });
+      showToast(t('unable_to_copy', 'Unable to copy text'), { type: 'error' });
     }
-    setSelectedMenuMessage(null);
+    closeMessageMenu();
   };
 
-  // Filtered + Pinned-first conversation sorting
-  const displayedConversations = useMemo(() => {
+  // Split conversations cleanly: Primary vs Pending Requests vs Filtered Spam
+  const { primaryConversations, requestConversations, spamConversations } = useMemo(() => {
     const q = listSearchQuery.toLowerCase().trim();
-    const list = allConversations.filter((conv) => {
+    const matches = (conv: SocialConversation) => {
       if (!q) return true;
       const p = conv.participants[0];
       const title = conv.type === 'group' ? conv.title : p?.name;
       const lastText = conv.lastMessage?.text || '';
-      return (
+      return Boolean(
         title?.toLowerCase().includes(q) ||
-        p?.name?.toLowerCase().includes(q) ||
-        p?.username?.toLowerCase().includes(q) ||
-        lastText.toLowerCase().includes(q)
+          p?.name?.toLowerCase().includes(q) ||
+          p?.username?.toLowerCase().includes(q) ||
+          lastText.toLowerCase().includes(q)
       );
-    });
-    return [...list].sort((a, b) => {
-      const ap = pinnedConvs[a.id] ? 1 : 0;
-      const bp = pinnedConvs[b.id] ? 1 : 0;
+    };
+    const sorted = [...allConversations].filter(matches).sort((a, b) => {
+      const ap = (pinnedConvs[a.id] ?? Boolean(a.isPinned)) ? 1 : 0;
+      const bp = (pinnedConvs[b.id] ?? Boolean(b.isPinned)) ? 1 : 0;
       if (ap !== bp) return bp - ap;
       return (b.lastMessage?.timestamp || 0) - (a.lastMessage?.timestamp || 0);
     });
+
+    const primary: SocialConversation[] = [];
+    const requests: SocialConversation[] = [];
+    const spam: SocialConversation[] = [];
+    sorted.forEach((c) => {
+      if (c.requestStatus === 'spam') {
+        spam.push(c);
+      } else if (c.isRequest && c.requestStatus !== 'accepted') {
+        requests.push(c);
+      } else {
+        primary.push(c);
+      }
+    });
+    return {
+      primaryConversations: primary,
+      requestConversations: requests,
+      spamConversations: spam,
+    };
   }, [allConversations, listSearchQuery, pinnedConvs]);
+
+  const displayedConversations = primaryConversations;
 
   const handleSwitchInboxTab = (next: 'primary' | 'requests') => {
     if (next === inboxTab) return;
@@ -508,23 +922,22 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
       {/* ==================== VIEW 1: INBOX CONVERSATION LIST ==================== */}
       {!activeConversation && (
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-          {/* Header: Large iOS Title + Compose Action */}
-          <header className="px-4 pt-safe pt-3 pb-2 flex items-center justify-between bg-white/90 dark:bg-black/90 backdrop-blur-2xl shrink-0">
-            <h1 className="text-[34px] font-bold tracking-tight leading-tight">
+          {/* Header: Clean Inbox Title + Compose Action */}
+          <header className="px-4 pt-safe pt-2.5 pb-1.5 flex items-center justify-between bg-white/95 dark:bg-black/95 backdrop-blur-2xl shrink-0">
+            <h1 className="text-[28px] font-bold tracking-tight leading-tight">
               {t('messages_title', 'Messages')}
             </h1>
 
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1">
               <button
                 id="messages-compose-btn"
                 type="button"
                 onClick={() => {
-                  soundFX.playClick();
                   setIsComposeOpen(true);
                 }}
-                aria-label="New message"
-                title="New message"
-                className="min-w-[44px] min-h-[44px] -mr-2 inline-flex items-center justify-center text-[#007AFF] transition-opacity hover:opacity-75 ios-press cursor-pointer"
+                aria-label={t('new_message', 'New Message')}
+                title={t('new_message', 'New Message')}
+                className="min-w-[44px] min-h-[44px] -mr-2 inline-flex items-center justify-center text-black dark:text-white transition-opacity hover:opacity-70 ios-press cursor-pointer"
               >
                 <SquarePen className="w-[22px] h-[22px] stroke-[1.85]" />
               </button>
@@ -532,7 +945,7 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
           </header>
 
           {/* Search Bar */}
-          <div className="px-4 pb-2.5 shrink-0">
+          <div className="px-4 pb-2 shrink-0">
             <SearchBar
               value={listSearchQuery}
               onChange={setListSearchQuery}
@@ -540,80 +953,73 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
             />
           </div>
 
-          {/* Active Stories Strip */}
-          {stories.length > 0 && !listSearchQuery && inboxTab === 'primary' && (
-            <div className="px-4 pb-3 border-b border-black/[0.06] dark:border-white/[0.08] shrink-0">
-              <div className="flex items-center gap-3.5 overflow-x-auto no-scrollbar py-1">
-                {onOpenCreateStory && (
-                  <button
-                    type="button"
-                    onClick={onOpenCreateStory}
-                    className="flex flex-col items-center gap-1.5 shrink-0 w-16 ios-press cursor-pointer"
-                  >
-                    <div className="relative">
-                      <Avatar src={currentUser.avatar} name={currentUser.name} size="md" className="w-14 h-14" />
-                      <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-[#007AFF] text-white flex items-center justify-center border-2 border-white dark:border-black">
-                        <Plus className="w-3 h-3 stroke-[3]" />
-                      </span>
-                    </div>
-                    <span className="text-[12px] text-[#8E8E93] truncate w-full text-center">
-                      Your Note
-                    </span>
-                  </button>
-                )}
-
-                {stories.map((story, sIdx) => (
-                  <button
-                    key={story.id}
-                    type="button"
-                    onClick={() => onOpenStory?.(sIdx)}
-                    className="flex flex-col items-center gap-1.5 shrink-0 w-16 ios-press cursor-pointer"
-                  >
-                    <div
-                      className={`p-[2px] rounded-full ${
-                        story.isSeen
-                          ? 'bg-[#C7C7CC] dark:bg-[#3A3A3C]'
-                          : 'bg-[#007AFF]'
-                      }`}
-                    >
-                      <div className="p-[2px] rounded-full bg-white dark:bg-black">
-                        <Avatar src={story.authorAvatar} name={story.authorName} size="md" className="w-[52px] h-[52px]" />
-                      </div>
-                    </div>
-                    <span className="text-[12px] text-black/80 dark:text-white/80 truncate w-full text-center">
-                      {story.authorName.split(' ')[0]}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
+          {/* Grouped Active Stories Bar */}
+          {!listSearchQuery && inboxTab === 'primary' && (
+            <StoriesBar
+              currentUser={currentUser}
+              stories={stories}
+              onOpenAuthorStory={(authorId, group) => {
+                if (onOpenAuthorStory) {
+                  onOpenAuthorStory(authorId, group);
+                } else if (onOpenStory && group.stories[0]) {
+                  const idx = stories.findIndex((s) => s.id === group.stories[0].id);
+                  if (idx >= 0) onOpenStory(idx);
+                }
+              }}
+              onOpenCreateStory={() => onOpenCreateStory?.()}
+              className="shrink-0"
+            />
           )}
 
-          {/* Segmented Control: Primary | Requests */}
-          <div className="px-4 py-2.5 shrink-0 border-b border-black/[0.06] dark:border-white/[0.08]">
-            <div className="grid grid-cols-2 p-1 rounded-[12px] bg-[#F2F2F7] dark:bg-[#1C1C1E]">
+          {/* Clean Borderless Tabs: Messages | Requests */}
+          <div className="px-4 pt-1 pb-1 shrink-0">
+            <div
+              role="tablist"
+              aria-label="Inbox sections"
+              className="flex items-center gap-7"
+            >
               <button
+                id="messages-primary-tab-btn"
                 type="button"
+                role="tab"
+                aria-selected={inboxTab === 'primary'}
                 onClick={() => handleSwitchInboxTab('primary')}
-                className={`py-1.5 rounded-[9px] text-[14px] font-medium transition-all cursor-pointer ${
+                className={`relative py-2.5 text-[15px] transition-colors cursor-pointer whitespace-nowrap ${
                   inboxTab === 'primary'
-                    ? 'bg-white dark:bg-[#2C2C2E] text-black dark:text-white shadow-xs font-semibold'
-                    : 'text-[#8E8E93] hover:text-black dark:hover:text-white'
+                    ? 'font-semibold text-black dark:text-white'
+                    : 'font-medium text-[#8E8E93] hover:text-black dark:hover:text-white'
                 }`}
               >
-                Messages ({displayedConversations.length})
+                <span>
+                  {t('messages_title', 'Messages')}
+                  {displayedConversations.length > 0 ? ` (${displayedConversations.length})` : ''}
+                </span>
+                {inboxTab === 'primary' && (
+                  <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-full bg-black dark:bg-white" />
+                )}
               </button>
+
               <button
                 id="messages-requests-header-btn"
                 type="button"
+                role="tab"
+                aria-selected={inboxTab === 'requests'}
                 onClick={() => handleSwitchInboxTab('requests')}
-                className={`py-1.5 rounded-[9px] text-[14px] font-medium transition-all cursor-pointer ${
+                className={`relative py-2.5 text-[15px] transition-colors cursor-pointer inline-flex items-center gap-1.5 whitespace-nowrap ${
                   inboxTab === 'requests'
-                    ? 'bg-white dark:bg-[#2C2C2E] text-black dark:text-white shadow-xs font-semibold'
-                    : 'text-[#8E8E93] hover:text-black dark:hover:text-white'
+                    ? 'font-semibold text-black dark:text-white'
+                    : 'font-medium text-[#8E8E93] hover:text-black dark:hover:text-white'
                 }`}
               >
-                Requests
+                <span>{t('requests', 'Requests')}</span>
+                {requestConversations.length > 0 && (
+                  <span className="min-w-[17px] h-[17px] px-1 rounded-full bg-[#007AFF] text-white text-[11px] font-semibold inline-flex items-center justify-center tabular-nums leading-none">
+                    {requestConversations.length}
+                  </span>
+                )}
+                {inboxTab === 'requests' && (
+                  <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-full bg-black dark:bg-white" />
+                )}
               </button>
             </div>
           </div>
@@ -630,20 +1036,56 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
           >
             {inboxTab === 'requests' ? (
               isSpamOpen ? (
-                <div className="p-4">
+                <div className="p-4 space-y-4">
                   <button
                     type="button"
                     onClick={() => setIsSpamOpen(false)}
-                    className="inline-flex items-center gap-1 text-[15px] font-medium text-[#007AFF] mb-6 cursor-pointer ios-press"
+                    className="inline-flex items-center gap-1 text-[15px] font-medium text-[#007AFF] cursor-pointer ios-press"
                   >
                     <ChevronLeft className="w-5 h-5" />
-                    <span>Back to Requests</span>
+                    <span>{t('back', 'Back')}</span>
                   </button>
-                  <EmptyState
-                    icon={<ShieldCheck className="w-7 h-7 text-[#007AFF]" />}
-                    title="No Spam Messages"
-                    description="Filtered or suspicious message requests will appear here safely."
-                  />
+                  {spamConversations.length === 0 ? (
+                    <EmptyState
+                      icon={<ShieldCheck className="w-7 h-7 text-[#007AFF]" />}
+                      title={t('no_filtered_messages', 'No Filtered Messages')}
+                      description={t('no_filtered_desc', 'Filtered message requests will appear here safely.')}
+                    />
+                  ) : (
+                    <div className="divide-y divide-black/[0.06] dark:divide-white/[0.08]">
+                      {spamConversations.map((conv) => {
+                        const rp = conv.participants[0];
+                        return (
+                          <div key={conv.id} className="py-3 flex items-center justify-between gap-3">
+                            <button
+                              type="button"
+                              onClick={() => rp && handleOpenUserProfile(rp)}
+                              className="flex items-center gap-3 min-w-0 flex-1 text-left cursor-pointer"
+                            >
+                              <Avatar src={rp?.avatar} name={rp?.name || 'User'} size="md" className="w-11 h-11" />
+                              <div className="min-w-0">
+                                <p className="text-[15px] font-semibold truncate">{rp?.name}</p>
+                                <p className="text-[13px] text-[#8E8E93] truncate">
+                                  {conv.lastMessage?.text ? (
+                                    <EmojiText text={conv.lastMessage.text} emojiSize={14} />
+                                  ) : (
+                                    t('filtered_requests', 'Filtered Requests')
+                                  )}
+                                </p>
+                              </div>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onRequestAction?.(conv.id, 'decline')}
+                              className="text-[13px] font-medium text-[#8E8E93] hover:text-black dark:hover:text-white cursor-pointer"
+                            >
+                              {t('delete', 'Delete')}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="divide-y divide-black/[0.06] dark:divide-white/[0.08]">
@@ -651,7 +1093,6 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                     id="message-requests-spam-row"
                     type="button"
                     onClick={() => {
-                      soundFX.playClick();
                       setIsSpamOpen(true);
                     }}
                     className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-[#F2F2F7]/60 dark:hover:bg-[#1C1C1E]/60 transition-colors cursor-pointer ios-press"
@@ -661,20 +1102,93 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                         <EyeOff className="w-5 h-5 text-[#8E8E93]" />
                       </div>
                       <div className="text-left">
-                        <p className="text-[16px] font-semibold">Filtered Spam</p>
-                        <p className="text-[14px] text-[#8E8E93]">0 filtered messages</p>
+                        <p className="text-[16px] font-semibold">{t('filtered_requests', 'Filtered Requests')}</p>
+                        <p className="text-[14px] text-[#8E8E93]">{spamConversations.length}</p>
                       </div>
                     </div>
                     <ChevronRight className="w-5 h-5 text-[#C7C7CC] dark:text-[#636366]" />
                   </button>
 
-                  <div className="pt-8">
-                    <EmptyState
-                      icon={<MessageCircle className="w-7 h-7" />}
-                      title="No Message Requests"
-                      description="Messages from creators outside your contacts will appear here."
-                    />
-                  </div>
+                  {requestConversations.length === 0 ? (
+                    <div className="pt-8">
+                      <EmptyState
+                        icon={<MessageCircle className="w-7 h-7" />}
+                        title={t('no_message_requests', 'No Message Requests')}
+                        description={t('no_requests_desc', "Messages from people you don't subscribe to will appear here.")}
+                      />
+                    </div>
+                  ) : (
+                    requestConversations.map((reqConv) => {
+                      const rp = reqConv.participants[0];
+                      const rName = rp?.name || reqConv.title || 'Creator';
+                      return (
+                        <div
+                          key={reqConv.id}
+                          onClick={() => onSelectConversation(reqConv.id)}
+                          className="px-4 py-3.5 flex items-center gap-3.5 cursor-pointer hover:bg-[#F2F2F7]/60 dark:hover:bg-[#1C1C1E]/60 transition-colors"
+                        >
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (rp) handleOpenUserProfile(rp);
+                            }}
+                            aria-label={rName}
+                            className="shrink-0 ios-press cursor-pointer"
+                          >
+                            <Avatar src={rp?.avatar} name={rName} size="md" className="w-[52px] h-[52px]" />
+                          </button>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-1 min-w-0">
+                                <span className="text-[16px] font-semibold truncate">{rName}</span>
+                                {rp?.isVerified && <VerifiedBadge size={14} />}
+                              </div>
+                              {reqConv.lastMessage?.timestamp && (
+                                <span className="text-[12px] text-[#8E8E93] tabular-nums">
+                                  {formatLocalizedTime(reqConv.lastMessage.timestamp, language)}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[14px] text-[#8E8E93] truncate mt-0.5">
+                              {reqConv.lastMessage?.text ? (
+                                <EmojiText text={reqConv.lastMessage.text} emojiSize={14} />
+                              ) : (
+                                t('message_request_from', 'Message request from')
+                              )}
+                            </p>
+                            <div
+                              className="flex items-center gap-2 mt-2"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => onRequestAction?.(reqConv.id, 'accept')}
+                                className="h-8 px-3.5 rounded-lg bg-[#007AFF] text-white text-[13px] font-semibold cursor-pointer ios-press"
+                              >
+                                {t('accept', 'Accept')}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onRequestAction?.(reqConv.id, 'decline')}
+                                className="h-8 px-3 rounded-lg bg-[#F2F2F7] dark:bg-[#2C2C2E] text-black dark:text-white text-[13px] font-medium cursor-pointer ios-press"
+                              >
+                                {t('delete', 'Delete')}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onRequestAction?.(reqConv.id, 'block')}
+                                className="h-8 px-3 rounded-lg text-[#8E8E93] hover:text-black dark:hover:text-white text-[13px] font-medium cursor-pointer"
+                              >
+                                {t('block', 'Block')}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               )
             ) : isTabLoading ? (
@@ -687,13 +1201,21 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
               <div className="pt-10">
                 <EmptyState
                   icon={<MessageCircle className="w-7 h-7" />}
-                  title={listSearchQuery ? 'No Conversations Found' : 'No Messages Yet'}
+                  title={
+                    listSearchQuery
+                      ? t('no_conversations_found', 'No Conversations Found')
+                      : t('no_messages_yet', 'No Messages Yet')
+                  }
                   description={
                     listSearchQuery
-                      ? `No chats matched "${listSearchQuery}".`
-                      : 'Start a conversation with a creator or friend.'
+                      ? `"${listSearchQuery}"`
+                      : t('start_conversation_desc', 'Start a conversation with a creator or friend.')
                   }
-                  actionLabel={listSearchQuery ? 'Clear Search' : 'New Message'}
+                  actionLabel={
+                    listSearchQuery
+                      ? t('clear_search', 'Clear Search')
+                      : t('new_message', 'New Message')
+                  }
                   onAction={() => {
                     if (listSearchQuery) setListSearchQuery('');
                     else setIsComposeOpen(true);
@@ -701,67 +1223,90 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                 />
               </div>
             ) : (
-              <div className="divide-y divide-black/[0.06] dark:divide-white/[0.08]">
+              <div>
                 {displayedConversations.map((conv) => {
                   const p = conv.participants[0];
                   const title = nicknames[conv.id] || (conv.type === 'group' ? conv.title : p?.name || 'Creator');
                   const avatar = p?.avatar;
-                  const isOnline = p?.isOnline;
-                  const isPinned = pinnedConvs[conv.id];
+                  const isPartnerBlocked = Boolean(
+                    (p?.id && (currentUser.blockedUserIds || []).includes(p.id)) || blockedConvs[conv.id]
+                  );
+                  const isOnline = Boolean(p?.isOnline && !isPartnerBlocked);
+                  const isPinned = pinnedConvs[conv.id] ?? Boolean(conv.isPinned);
                   const isMuted = mutedConvs[conv.id];
                   const isLastMsgMine =
                     conv.lastMessage?.senderId === currentUser.id ||
                     conv.lastMessage?.senderId === 'user-me' ||
                     conv.lastMessage?.senderId === 'user';
-                  const isSeen = conv.lastMessage?.status === 'read';
+                  const isSeen =
+                    Boolean(isLastMsgMine) &&
+                    !conv.isRequest &&
+                    conv.lastMessage?.status === 'read' &&
+                    readReceipts;
                   const statusTime =
-                    conv.lastMessage?.seenAt && isSeen
-                      ? formatClockTime(conv.lastMessage.seenAt)
+                    isLastMsgMine && isSeen && conv.lastMessage?.seenAt
+                      ? formatLocalizedTime(conv.lastMessage.seenAt, language)
                       : conv.lastMessage?.timestamp
-                      ? formatClockTime(conv.lastMessage.timestamp)
+                      ? formatLocalizedTime(conv.lastMessage.timestamp, language)
                       : '';
                   const hasUnread = conv.unreadCount > 0;
                   const isPartnerTyping =
-                    conv.isTyping && conv.typingUserId !== currentUser.id;
+                    !isPartnerBlocked && conv.isTyping && conv.typingUserId !== currentUser.id;
 
                   return (
                     <div
                       key={conv.id}
                       onClick={() => onSelectConversation(conv.id)}
-                      className="px-4 py-3 flex items-center gap-3.5 cursor-pointer hover:bg-[#F2F2F7]/70 dark:hover:bg-[#1C1C1E]/70 active:bg-[#F2F2F7] dark:active:bg-[#1C1C1E] transition-colors"
+                      className="px-4 py-2.5 flex items-center gap-3.5 cursor-pointer hover:bg-[#F2F2F7]/50 dark:hover:bg-[#1C1C1E]/50 active:bg-[#F2F2F7] dark:active:bg-[#1C1C1E] transition-colors"
                     >
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (p) handleOpenUserProfile(p);
+                          if (conv.type === 'group') {
+                            onSelectConversation(conv.id);
+                          } else if (p) {
+                            handleOpenUserProfile(p);
+                          }
                         }}
-                        aria-label={`View ${title} profile`}
+                        aria-label={title}
                         className="shrink-0 ios-press cursor-pointer"
                       >
-                        <Avatar src={avatar} name={title} size="md" className="w-[54px] h-[54px]" isOnline={isOnline} />
+                        <Avatar src={avatar} name={title} size="md" className="w-[52px] h-[52px]" isOnline={isOnline} />
                       </button>
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-1.5 min-w-0">
+                          <div className="flex items-center gap-1 min-w-0">
                             <span
-                              className={`text-[17px] truncate ${
-                                hasUnread ? 'font-bold' : 'font-semibold'
+                              className={`text-[15px] leading-snug truncate ${
+                                hasUnread ? 'font-bold text-black dark:text-white' : 'font-semibold text-black dark:text-white'
                               }`}
                             >
                               {title}
                             </span>
-                            {p?.isVerified && <VerifiedBadge size={14} />}
-                            {isPinned && <Pin className="w-3.5 h-3.5 text-[#007AFF] shrink-0" />}
-                            {isMuted && <BellOff className="w-3.5 h-3.5 text-[#8E8E93] shrink-0" />}
+                            {conv.type !== 'group' && p?.isVerified && (
+                              <VerifiedBadge size={14} className="shrink-0" />
+                            )}
+                            {isPinned && (
+                              <Pin
+                                aria-label="Pinned"
+                                className="w-3 h-3 text-[#8E8E93] shrink-0 rotate-45"
+                              />
+                            )}
+                            {isMuted && (
+                              <BellOff
+                                aria-label="Muted"
+                                className="w-3 h-3 text-[#8E8E93] shrink-0"
+                              />
+                            )}
                           </div>
 
                           {statusTime && (
                             <span
-                              className={`text-[13px] tabular-nums shrink-0 ${
+                              className={`text-[12px] tabular-nums shrink-0 ${
                                 hasUnread
-                                  ? 'text-[#007AFF] font-semibold'
+                                  ? 'text-black dark:text-white font-semibold'
                                   : 'text-[#8E8E93]'
                               }`}
                             >
@@ -770,34 +1315,37 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                           )}
                         </div>
 
-                        <div className="flex items-center justify-between gap-2 mt-0.5">
-                          <div className="flex items-center gap-1 min-w-0 flex-1">
-                            {!isPartnerTyping && isLastMsgMine && conv.lastMessage && (
-                              isSeen ? (
-                                <CheckCheck className="w-3.5 h-3.5 text-[#007AFF] shrink-0" />
-                              ) : (
-                                <Check className="w-3.5 h-3.5 text-[#8E8E93] shrink-0" />
-                              )
+                        <div className="flex items-center justify-between gap-2.5 mt-0.5">
+                          <p
+                            className={`text-[14px] leading-snug truncate min-w-0 flex-1 ${
+                              isPartnerTyping
+                                ? 'text-[#007AFF] font-medium'
+                                : hasUnread
+                                ? 'text-black dark:text-white font-semibold'
+                                : 'text-[#8E8E93]'
+                            }`}
+                          >
+                            {isPartnerTyping ? (
+                              t('typing', 'Typing...')
+                            ) : isLastMsgMine && conv.lastMessage ? (
+                              <>
+                                <span className="text-[#8E8E93] font-normal">
+                                  {isSeen ? t('seen', 'Seen') : t('sent', 'Sent')} ·{' '}
+                                </span>
+                                <EmojiText text={conv.lastMessage.text} emojiSize={14} />
+                              </>
+                            ) : conv.lastMessage?.text ? (
+                              <EmojiText text={conv.lastMessage.text} emojiSize={14} />
+                            ) : (
+                              t('start_conversation_prompt', 'Send a message to start the conversation.')
                             )}
-                            <p
-                              className={`text-[15px] truncate ${
-                                isPartnerTyping
-                                  ? 'text-[#007AFF] font-medium'
-                                  : hasUnread
-                                  ? 'text-black dark:text-white font-medium'
-                                  : 'text-[#8E8E93]'
-                              }`}
-                            >
-                              {isPartnerTyping
-                                ? 'Typing...'
-                                : conv.lastMessage?.text || 'Start a conversation'}
-                            </p>
-                          </div>
+                          </p>
 
                           {hasUnread && (
-                            <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-[#007AFF] text-white text-[12px] font-semibold flex items-center justify-center tabular-nums shrink-0">
-                              {conv.unreadCount}
-                            </span>
+                            <span
+                              aria-label={`${conv.unreadCount} unread`}
+                              className="w-2.5 h-2.5 rounded-full bg-[#007AFF] shrink-0"
+                            />
                           )}
                         </div>
                       </div>
@@ -816,18 +1364,18 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
           {isDetailsOpen ? (
             /* -------------------- CONVERSATION DETAILS SUBSCREEN -------------------- */
             <div className="flex-1 min-h-0 flex flex-col overflow-y-auto bg-[#F2F2F7] dark:bg-black pb-10">
-              <header className="sticky top-0 z-20 bg-white/90 dark:bg-black/90 backdrop-blur-2xl border-b border-black/[0.08] dark:border-white/[0.1] pt-safe">
+              <header className="sticky top-0 z-20 bg-white/92 dark:bg-black/92 backdrop-blur-2xl pt-safe">
                 <div className="h-12 px-2 flex items-center justify-between">
                   <button
                     id="tiktok-details-back-btn"
                     type="button"
                     onClick={() => setIsDetailsOpen(false)}
-                    className="min-w-[44px] min-h-[44px] inline-flex items-center gap-0.5 px-2 text-[#007AFF] cursor-pointer ios-press"
+                    className="min-w-[44px] min-h-[44px] inline-flex items-center gap-0.5 px-2 text-[#007AFF] hover:opacity-70 transition-opacity cursor-pointer ios-press"
                   >
                     <ChevronLeft className="w-6 h-6 stroke-[2.2]" />
-                    <span className="text-[17px]">Chat</span>
+                    <span className="text-[17px]">{t('back', 'Back')}</span>
                   </button>
-                  <span className="text-[17px] font-semibold">Details</span>
+                  <span className="text-[17px] font-semibold">{t('details', 'Details')}</span>
                   <div className="w-16" />
                 </div>
               </header>
@@ -836,64 +1384,106 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
               <div className="px-4 pt-6 pb-5 flex flex-col items-center text-center">
                 <button
                   type="button"
-                  onClick={() => handleOpenUserProfile(partner)}
-                  className="ios-press cursor-pointer"
+                  onClick={() => !isGroup && handleOpenUserProfile(partner)}
+                  className={isGroup ? 'cursor-default' : 'ios-press cursor-pointer'}
                 >
                   <Avatar
                     src={partner?.avatar}
                     name={displayName}
                     size="xl"
-                    isOnline={partner?.isOnline}
+                    isOnline={!isGroup && partner?.isOnline}
                   />
                 </button>
-                <div className="flex items-center justify-center gap-1.5 mt-3">
-                  <h2 className="text-[22px] font-bold tracking-tight">{displayName}</h2>
-                  {partner?.isVerified && <VerifiedBadge size={16} />}
-                </div>
-                <p className="text-[15px] text-[#8E8E93] mt-0.5">
-                  @{partner?.username || 'creator'}
-                </p>
+                <button
+                  type="button"
+                  onClick={() => !isGroup && handleOpenUserProfile(partner)}
+                  className={`mt-3 text-center ${isGroup ? 'cursor-default' : 'cursor-pointer ios-press'}`}
+                >
+                  <div className="flex items-center justify-center gap-1.5">
+                    <h2 className="text-[22px] font-bold tracking-tight">{displayName}</h2>
+                    {!isGroup && partner?.isVerified && <VerifiedBadge size={16} />}
+                  </div>
+                  <p className="text-[15px] text-[#8E8E93] mt-0.5">
+                    {isGroup
+                      ? `${activeConversation.participants.length} members`
+                      : `@${partner?.username || 'creator'}`}
+                  </p>
+                </button>
 
                 {/* Primary Profile Actions */}
-                <div className="flex items-center justify-center gap-6 mt-5">
-                  <button
-                    id="tiktok-action-create-group"
-                    type="button"
-                    onClick={() => {
-                      soundFX.playClick();
-                      setSelectedGroupUsers([partner?.id || '']);
-                      setNewGroupName('');
-                      setIsGroupCreateOpen(true);
-                    }}
-                    className="flex flex-col items-center gap-1.5 cursor-pointer ios-press"
-                  >
-                    <div className="w-12 h-12 rounded-full bg-white dark:bg-[#1C1C1E] flex items-center justify-center border border-black/[0.06] dark:border-white/[0.08]">
-                      <Users className="w-5 h-5 text-[#007AFF]" />
-                    </div>
-                    <span className="text-[12px] font-medium text-[#8E8E93]">Create Group</span>
-                  </button>
+                {!isGroup && (
+                  <div className="flex items-center justify-center gap-6 mt-5">
+                    <button
+                      id="tiktok-action-create-group"
+                      type="button"
+                      onClick={() => {
+                        setSelectedGroupUsers([partner?.id || '']);
+                        setNewGroupName('');
+                        setIsGroupCreateOpen(true);
+                      }}
+                      className="flex flex-col items-center gap-1.5 cursor-pointer ios-press"
+                    >
+                      <div className="w-12 h-12 rounded-full bg-white dark:bg-[#1C1C1E] flex items-center justify-center">
+                        <Users className="w-5 h-5 text-[#007AFF]" />
+                      </div>
+                      <span className="text-[12px] font-medium text-[#8E8E93]">{t('create_group', 'Create Group')}</span>
+                    </button>
 
-                  <button
-                    id="tiktok-action-view-profile"
-                    type="button"
-                    onClick={() => handleOpenUserProfile(partner)}
-                    className="flex flex-col items-center gap-1.5 cursor-pointer ios-press"
-                  >
-                    <div className="w-12 h-12 rounded-full bg-white dark:bg-[#1C1C1E] flex items-center justify-center border border-black/[0.06] dark:border-white/[0.08]">
-                      <UserIcon className="w-5 h-5 text-[#007AFF]" />
-                    </div>
-                    <span className="text-[12px] font-medium text-[#8E8E93]">Profile</span>
-                  </button>
-                </div>
+                    <button
+                      id="tiktok-action-view-profile"
+                      type="button"
+                      onClick={() => handleOpenUserProfile(partner)}
+                      className="flex flex-col items-center gap-1.5 cursor-pointer ios-press"
+                    >
+                      <div className="w-12 h-12 rounded-full bg-white dark:bg-[#1C1C1E] flex items-center justify-center">
+                        <UserIcon className="w-5 h-5 text-[#007AFF]" />
+                      </div>
+                      <span className="text-[12px] font-medium text-[#8E8E93]">{t('nav_profile', 'Profile')}</span>
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Grouped iOS Settings Cards */}
               <div className="px-4 space-y-5">
+                {isGroup && activeConversation.participants.length > 0 && (
+                  <section>
+                    <p className="px-3 pb-1.5 text-[13px] font-medium text-[#8E8E93] uppercase tracking-wider">
+                      Members ({activeConversation.participants.length})
+                    </p>
+                    <div className="rounded-[18px] bg-white dark:bg-[#1C1C1E] divide-y divide-black/[0.06] dark:divide-white/[0.08] overflow-hidden">
+                      {activeConversation.participants.map((member) => (
+                        <button
+                          key={member.id}
+                          type="button"
+                          onClick={() => {
+                            setIsDetailsOpen(false);
+                            handleOpenUserProfile(member);
+                          }}
+                          className="w-full px-4 py-3 flex items-center justify-between gap-3 text-left hover:bg-[#F2F2F7]/50 dark:hover:bg-[#2C2C2E]/40 cursor-pointer"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <Avatar src={member.avatar} name={member.name} size="sm" />
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1">
+                                <span className="text-[15px] font-semibold truncate">{member.name}</span>
+                                {member.isVerified && <VerifiedBadge size={14} />}
+                              </div>
+                              <p className="text-[13px] text-[#8E8E93] truncate">@{member.username}</p>
+                            </div>
+                          </div>
+                          <ChevronRight className="w-4 h-4 text-[#C7C7CC] shrink-0" />
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
                 <section>
                   <p className="px-3 pb-1.5 text-[13px] font-medium text-[#8E8E93] uppercase tracking-wider">
-                    Appearance & Naming
+                    {t('appear_naming', 'Appearance & Naming')}
                   </p>
-                  <div className="rounded-[18px] bg-white dark:bg-[#1C1C1E] divide-y divide-black/[0.06] dark:divide-white/[0.08] overflow-hidden border border-black/[0.05] dark:border-white/[0.06]">
+                  <div className="rounded-[18px] bg-white dark:bg-[#1C1C1E] divide-y divide-black/[0.06] dark:divide-white/[0.08] overflow-hidden">
                     <button
                       type="button"
                       onClick={() => setIsThemeSheetOpen(true)}
@@ -901,7 +1491,7 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                     >
                       <div className="flex items-center gap-3">
                         <Palette className="w-5 h-5 text-[#007AFF]" />
-                        <span className="text-[16px]">Chat Theme</span>
+                        <span className="text-[16px]">{t('chat_theme', 'Chat Theme')}</span>
                       </div>
                       <div className="flex items-center gap-2 text-[15px] text-[#8E8E93]">
                         <span>{currentThemeName}</span>
@@ -917,7 +1507,7 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                     >
                       <div className="flex items-center gap-3">
                         <Sparkles className="w-5 h-5 text-[#007AFF]" />
-                        <span className="text-[16px]">Bubble Style</span>
+                        <span className="text-[16px]">{t('bubble_style', 'Bubble Style')}</span>
                       </div>
                       <ChevronRight className="w-4 h-4 text-[#C7C7CC]" />
                     </button>
@@ -932,11 +1522,11 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                     >
                       <div className="flex items-center gap-3">
                         <PenLine className="w-5 h-5 text-[#007AFF]" />
-                        <span className="text-[16px]">Nickname</span>
+                        <span className="text-[16px]">{t('nickname', 'Nickname')}</span>
                       </div>
                       <div className="flex items-center gap-2 text-[15px] text-[#8E8E93]">
                         <span className="truncate max-w-[120px]">
-                          {customNickname || 'Set name'}
+                          {customNickname || t('set_name', 'Set name')}
                         </span>
                         <ChevronRight className="w-4 h-4 text-[#C7C7CC]" />
                       </div>
@@ -946,42 +1536,42 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
 
                 <section>
                   <p className="px-3 pb-1.5 text-[13px] font-medium text-[#8E8E93] uppercase tracking-wider">
-                    Notifications & Chat Controls
+                    {t('notifs_controls', 'Notifications & Chat Controls')}
                   </p>
-                  <div className="rounded-[18px] bg-white dark:bg-[#1C1C1E] divide-y divide-black/[0.06] dark:divide-white/[0.08] overflow-hidden border border-black/[0.05] dark:border-white/[0.06]">
+                  <div className="rounded-[18px] bg-white dark:bg-[#1C1C1E] divide-y divide-black/[0.06] dark:divide-white/[0.08] overflow-hidden">
                     <div className="px-4 py-3 flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <BellOff className="w-5 h-5 text-[#8E8E93]" />
-                        <span className="text-[16px]">Mute Messages</span>
+                        <span className="text-[16px]">{t('mute_messages', 'Mute Messages')}</span>
                       </div>
                       <Toggle
                         checked={isCurrentMuted}
                         onChange={(next) => {
                           setMutedConvs((prev) => ({ ...prev, [activeConvId]: next }));
-                          showToast(next ? 'Messages muted' : 'Messages unmuted', {
+                          showToast(next ? t('muted', 'Muted') : t('mute_messages', 'Mute Messages'), {
                             type: 'info',
                             durationMs: 1800,
                           });
                         }}
-                        ariaLabel="Mute messages"
+                        ariaLabel={t('mute_messages', 'Mute Messages')}
                       />
                     </div>
 
                     <div className="px-4 py-3 flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <ArrowUpToLine className="w-5 h-5 text-[#007AFF]" />
-                        <span className="text-[16px]">Pin to Top</span>
+                        <span className="text-[16px]">{t('pin_to_top', 'Pin to Top')}</span>
                       </div>
                       <Toggle
                         checked={isCurrentPinned}
                         onChange={(next) => {
                           setPinnedConvs((prev) => ({ ...prev, [activeConvId]: next }));
-                          showToast(next ? 'Pinned conversation' : 'Unpinned conversation', {
+                          showToast(t('pin_to_top', 'Pin to Top'), {
                             type: 'info',
                             durationMs: 1800,
                           });
                         }}
-                        ariaLabel="Pin conversation"
+                        ariaLabel={t('pin_to_top', 'Pin to Top')}
                       />
                     </div>
 
@@ -992,17 +1582,17 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                     >
                       <div className="flex items-center gap-3">
                         <Clock className="w-5 h-5 text-[#007AFF]" />
-                        <span className="text-[16px]">Disappearing Messages</span>
+                        <span className="text-[16px]">{t('disappearing_messages', 'Disappearing Messages')}</span>
                       </div>
                       <div className="flex items-center gap-2 text-[15px] text-[#8E8E93]">
                         <span>
                           {currentDisappearing === 'off'
-                            ? 'Off'
+                            ? t('off', 'Off')
                             : currentDisappearing === '24h'
-                            ? '24 hours'
+                            ? t('hours_24', '24 hours')
                             : currentDisappearing === '7d'
-                            ? '7 days'
-                            : '90 days'}
+                            ? t('days_7', '7 days')
+                            : t('days_90', '90 days')}
                         </span>
                         <ChevronRight className="w-4 h-4 text-[#C7C7CC]" />
                       </div>
@@ -1015,7 +1605,7 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                     >
                       <div className="flex items-center gap-3">
                         <Lock className="w-5 h-5 text-[#007AFF]" />
-                        <span className="text-[16px]">Privacy & Safety</span>
+                        <span className="text-[16px]">{t('privacy_safety', 'Privacy & Safety')}</span>
                       </div>
                       <ChevronRight className="w-4 h-4 text-[#C7C7CC]" />
                     </button>
@@ -1023,13 +1613,14 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                 </section>
 
                 <section>
-                  <div className="rounded-[18px] bg-white dark:bg-[#1C1C1E] divide-y divide-black/[0.06] dark:divide-white/[0.08] overflow-hidden border border-black/[0.05] dark:border-white/[0.06]">
+                  <div className="rounded-[18px] bg-white dark:bg-[#1C1C1E] divide-y divide-black/[0.06] dark:divide-white/[0.08] overflow-hidden">
                     <button
                       type="button"
                       onClick={() => {
                         if (isCurrentBlocked) {
                           setBlockedConvs((prev) => ({ ...prev, [activeConvId]: false }));
-                          showToast('Account unblocked', { type: 'success' });
+                          if (partner?.id) onToggleBlockUser?.(partner.id, false);
+                          showToast(t('account_unblocked', 'Account unblocked'), { type: 'success' });
                         } else {
                           setIsBlockDialogOpen(true);
                         }
@@ -1038,18 +1629,22 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                     >
                       <Ban className="w-5 h-5" />
                       <span className="text-[16px] font-semibold">
-                        {isCurrentBlocked ? `Unblock ${displayName}` : `Block ${displayName}`}
+                        {isCurrentBlocked ? `${t('unblock', 'Unblock')} ${displayName}` : `${t('block', 'Block')} ${displayName}`}
                       </span>
                     </button>
 
                     <button
                       id="tiktok-opt-report"
                       type="button"
-                      onClick={() => setIsReportSheetOpen(true)}
+                      onClick={() => {
+                        setReportTargetType('conversation');
+                        setReportTargetId(activeConvId);
+                        setIsReportSheetOpen(true);
+                      }}
                       className="w-full px-4 py-3.5 flex items-center gap-3 text-left text-black dark:text-white hover:bg-black/[0.04] dark:hover:bg-white/[0.05] cursor-pointer"
                     >
                       <Flag className="w-5 h-5" />
-                      <span className="text-[16px] font-semibold">Report Conversation</span>
+                      <span className="text-[16px] font-semibold">{t('report_conversation', 'Report Conversation')}</span>
                     </button>
                   </div>
                 </section>
@@ -1058,71 +1653,137 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
           ) : (
             /* -------------------- CHAT THREAD SCREEN -------------------- */
             <>
-              {/* Sticky iOS Chat Top Navigation Bar */}
-              <header className="shrink-0 bg-white/90 dark:bg-black/90 backdrop-blur-2xl border-b border-black/[0.08] dark:border-white/[0.1] pt-safe">
-                <div className="h-14 px-2 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1 min-w-0 flex-1">
-                    <button
-                      id="chat-screen-back-btn"
-                      type="button"
-                      onClick={onBackToList}
-                      aria-label="Back to messages"
-                      className="min-w-[44px] min-h-[44px] inline-flex items-center justify-center text-[#007AFF] cursor-pointer ios-press"
-                    >
-                      <ChevronLeft className="w-6 h-6 stroke-[2.2]" />
-                    </button>
+              {/* Borderless Sticky Chat Header with Screen-Centered Recipient Identity */}
+              <header className="shrink-0 bg-white/95 dark:bg-black/95 backdrop-blur-2xl pt-safe">
+                <div className="relative h-14 px-2 flex items-center justify-between">
+                  {/* Far Left: Arrow + Back Text */}
+                  <button
+                    id="chat-screen-back-btn"
+                    type="button"
+                    onClick={onBackToList}
+                    aria-label={t('back', 'Back')}
+                    className="relative z-10 min-w-[44px] min-h-[44px] inline-flex items-center gap-0.5 pr-1 text-[#007AFF] hover:opacity-70 transition-opacity cursor-pointer ios-press shrink-0"
+                  >
+                    <ChevronLeft className="w-6 h-6 stroke-[2.2]" />
+                    <span className="text-[17px] leading-none">{t('back', 'Back')}</span>
+                  </button>
 
+                  {/* Visually Screen-Centered Recipient Group */}
+                  <div
+                    id="chat-header-centered-identity"
+                    className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 max-w-[calc(100%-164px)] flex items-center justify-center gap-2.5 pointer-events-auto"
+                  >
                     <button
-                      id="chat-topbar-profile-btn"
                       type="button"
-                      onClick={() => setIsDetailsOpen(true)}
-                      className="flex items-center gap-2.5 min-w-0 flex-1 text-left cursor-pointer ios-press"
+                      onClick={() => {
+                        if (isGroup) {
+                          setIsDetailsOpen(true);
+                        } else if (partner) {
+                          handleOpenUserProfile(partner);
+                        }
+                      }}
+                      aria-label={isGroup ? `Open ${displayName} details` : `Open ${displayName} profile`}
+                      className="shrink-0 cursor-pointer ios-press"
                     >
                       <Avatar
                         src={partner?.avatar}
                         name={displayName}
                         size="sm"
-                        isOnline={partner?.isOnline}
+                        className="w-8 h-8"
+                        isOnline={Boolean(!isGroup && partner?.isOnline && !isCurrentBlocked)}
                       />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1">
-                          <span className="text-[16px] font-semibold truncate">{displayName}</span>
-                          {partner?.isVerified && <VerifiedBadge size={14} />}
-                        </div>
-                        <p
-                          className={`text-[12px] truncate ${
-                            isCurrentBlocked
-                              ? 'text-black dark:text-white font-semibold'
-                              : isOtherUserTyping
-                              ? 'text-[#007AFF] font-medium'
-                              : 'text-[#8E8E93]'
-                          }`}
-                        >
-                          {isCurrentBlocked
-                            ? 'Blocked'
-                            : isOtherUserTyping
-                            ? 'Typing...'
-                            : isCurrentMuted
-                            ? 'Muted'
-                            : partner?.isOnline
-                            ? 'Online'
-                            : 'Active recently'}
-                          {currentDisappearing !== 'off' ? ` · Disappearing ${currentDisappearing}` : ''}
-                        </p>
+                    </button>
+
+                    <button
+                      id="chat-topbar-profile-btn"
+                      type="button"
+                      onClick={() => {
+                        if (isGroup) {
+                          setIsDetailsOpen(true);
+                        } else if (partner) {
+                          handleOpenUserProfile(partner);
+                        } else {
+                          setIsDetailsOpen(true);
+                        }
+                      }}
+                      className="flex flex-col items-start min-w-0 text-left cursor-pointer ios-press"
+                    >
+                      <div className="flex items-center gap-1 min-w-0 max-w-full">
+                        <span className="text-[15px] font-semibold leading-tight truncate">
+                          {displayName}
+                        </span>
+                        {!isGroup && partner?.isVerified && (
+                          <VerifiedBadge size={14} className="shrink-0" />
+                        )}
                       </div>
+                      <p
+                        className={`text-[12px] leading-tight truncate max-w-full flex items-center gap-1 ${
+                          isCurrentBlocked
+                            ? 'text-black dark:text-white font-medium'
+                            : isOtherUserTyping
+                            ? 'text-[#007AFF] font-medium'
+                            : 'text-[#8E8E93]'
+                        }`}
+                      >
+                        {isCurrentBlocked ? (
+                          <span>{t('blocked', 'Blocked')}</span>
+                        ) : isOtherUserTyping ? (
+                          <span>{t('typing', 'Typing...')}</span>
+                        ) : isCurrentMuted ? (
+                          <span>{t('muted', 'Muted')}</span>
+                        ) : isGroup ? (
+                          <span>{activeConversation.participants.length} members</span>
+                        ) : (
+                          <span>@{partner?.username || 'creator'}</span>
+                        )}
+                        {currentDisappearing !== 'off' ? ` · ${currentDisappearing}` : ''}
+                      </p>
                     </button>
                   </div>
 
+                  {/* Far Right: Hamburger Menu */}
                   <button
                     id="chat-topbar-tiktok-menu-btn"
                     type="button"
                     onClick={() => setIsDetailsOpen(true)}
-                    aria-label="Conversation details"
-                    className="min-w-[44px] min-h-[44px] -mr-1 inline-flex items-center justify-center text-[#007AFF] cursor-pointer ios-press"
+                    aria-label={t('details', 'Details')}
+                    className="relative z-10 min-w-[44px] min-h-[44px] -mr-1 inline-flex items-center justify-center text-[#007AFF] hover:opacity-70 transition-opacity cursor-pointer ios-press shrink-0"
                   >
-                    <MoreHorizontal className="w-[22px] h-[22px] stroke-[1.85]" />
+                    <Menu className="w-[22px] h-[22px] stroke-[1.85]" />
                   </button>
                 </div>
+
+                {/* Pending Message Request Action Banner */}
+                {activeConversation.isRequest && activeConversation.requestStatus !== 'accepted' && (
+                  <div className="px-4 py-2.5 bg-[#F2F2F7] dark:bg-[#1C1C1E] flex items-center justify-between gap-2">
+                    <span className="text-[12px] text-[#8E8E93] truncate">
+                      {t('message_request_from', 'Message request from')} {displayName}
+                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => onRequestAction?.(activeConversation.id, 'accept')}
+                        className="px-3 py-1 rounded-lg bg-[#007AFF] text-white text-[12px] font-semibold cursor-pointer ios-press"
+                      >
+                        {t('accept', 'Accept')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onRequestAction?.(activeConversation.id, 'decline')}
+                        className="px-2.5 py-1 rounded-lg bg-white dark:bg-[#2C2C2E] text-black dark:text-white text-[12px] font-medium cursor-pointer ios-press"
+                      >
+                        {t('delete', 'Delete')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onRequestAction?.(activeConversation.id, 'block')}
+                        className="px-2 py-1 text-[12px] font-medium text-[#8E8E93] cursor-pointer"
+                      >
+                        {t('block', 'Block')}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </header>
 
               {/* Messages Stream */}
@@ -1133,115 +1794,223 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                   const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
                   setShowScrollBottomBtn(distFromBottom > 180);
                 }}
-                className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-2.5 relative"
+                className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch] px-3.5 py-3 relative"
               >
+                <div className="min-h-full flex flex-col justify-end space-y-2">
                 {(activeConversation.messages || []).length === 0 ? (
-                  <div className="pt-14">
+                  <div className="my-auto py-8">
                     <EmptyState
                       icon={<MessageCircle className="w-7 h-7" />}
-                      title={`Say hello to ${displayName}`}
-                      description="Send a message to start the conversation."
+                      title={`${t('say_hello', 'Say hello')} · ${displayName}`}
+                      description={t('start_conversation_prompt', 'Send a message to start the conversation.')}
                     />
                   </div>
                 ) : (
-                  (activeConversation.messages || []).map((msg, idx, arr) => {
-                    const isMine = msg.senderId === currentUser.id;
-                    const translationState = translationMap[msg.id];
-                    const isTranslated = Boolean(translationState?.isTranslated);
-                    const displayText = isTranslated ? translationState?.translatedText : msg.text;
-                    const isLastMessage = idx === arr.length - 1;
+                  (() => {
+                    const msgs = activeConversation.messages || [];
+                    let lastOutgoingIndex = -1;
+                    for (let i = msgs.length - 1; i >= 0; i--) {
+                      if (msgs[i].senderId === currentUser.id) {
+                        lastOutgoingIndex = i;
+                        break;
+                      }
+                    }
 
-                    const selectedStyle = msg.bubbleStyle || 'default';
-                    const msgBubbleDef = getBubbleStyle(selectedStyle);
-                    const isCustomBubble = selectedStyle !== 'default';
-                    const outgoingBubbleClass = isCustomBubble
-                      ? `${msgBubbleDef.bubbleClass} rounded-br-[6px]`
-                      : `${activeThemeConfig.gradient} text-white rounded-[20px] rounded-br-[6px]`;
+                    return msgs.map((msg, idx) => {
+                      const isMine = msg.senderId === currentUser.id;
+                      const transKey = `${msg.id}:${language}`;
+                      const translationState = translationMap[transKey];
+                      const isTranslating = Boolean(translatingIds[transKey]);
+                      const hasTranslation = Boolean(translationState?.translatedText);
+                      const isTranslationVisible = Boolean(translationState?.isVisible && hasTranslation);
+                      const isLastOutgoing = isMine && idx === lastOutgoingIndex;
 
-                    return (
-                      <div
-                        key={msg.id}
-                        className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}
-                      >
-                        {msg.replyTo && (
-                          <div
-                            className={`flex flex-col mb-1 max-w-[76%] ${
-                              isMine ? 'items-end' : 'items-start'
-                            }`}
-                          >
-                            <span className="text-[11px] text-[#8E8E93] px-1 mb-0.5">
-                              {isMine ? 'You replied' : `${msg.senderName} replied`}
-                            </span>
-                            <div className="px-3.5 py-2 rounded-[16px] bg-[#F2F2F7] dark:bg-[#1C1C1E] text-[#8E8E93] text-[13px] border border-black/[0.05] dark:border-white/[0.06]">
-                              <p className="line-clamp-2">{msg.replyTo.text}</p>
-                            </div>
-                          </div>
-                        )}
+                      const selectedStyle = msg.bubbleStyle || 'default';
+                      const msgBubbleDef = getBubbleStyle(selectedStyle);
+                      const isCustomBubble = selectedStyle !== 'default';
+                      const outgoingBubbleClass = isCustomBubble
+                        ? `${msgBubbleDef.bubbleClass} rounded-br-[5px]`
+                        : `${activeThemeConfig.gradient} text-white rounded-[18px] rounded-br-[5px]`;
 
-                        <div className="max-w-[78%] flex flex-col">
-                          <div
-                            onTouchStart={() => startLongPress(msg)}
-                            onTouchMove={cancelLongPress}
-                            onTouchEnd={cancelLongPress}
-                            onMouseDown={() => startLongPress(msg)}
-                            onMouseMove={cancelLongPress}
-                            onMouseUp={cancelLongPress}
-                            onContextMenu={(e) => {
-                              e.preventDefault();
-                              setSelectedMenuMessage(msg);
-                            }}
-                            onClick={() => {
-                              if (!isLongPressTriggeredRef.current) {
-                                setSelectedMenuMessage(msg);
-                              }
-                              isLongPressTriggeredRef.current = false;
-                            }}
-                            className={`px-4 py-2.5 text-[16px] leading-[1.4] break-words cursor-pointer select-none ios-press relative ${
-                              isMine
-                                ? outgoingBubbleClass
-                                : 'bg-[#F2F2F7] dark:bg-[#1C1C1E] text-black dark:text-white rounded-[20px] rounded-bl-[6px]'
-                            }`}
-                          >
-                            {isMine && isCustomBubble && msgBubbleDef.renderCharacter('chat')}
-                            <p className={isMine && isCustomBubble ? msgBubbleDef.textClass : ''}>
-                              {displayText}
-                            </p>
-                          </div>
-
-                          {/* Reactions */}
-                          {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                      return (
+                        <div
+                          key={msg.id}
+                          className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}
+                        >
+                          {msg.storyReply && (
                             <div
-                              className={`flex items-center gap-1 -mt-1.5 z-10 ${
-                                isMine ? 'justify-end pr-2' : 'justify-start pl-2'
+                              className={`mb-1 max-w-[72%] flex items-center gap-2 p-2 rounded-2xl bg-[#F2F2F7] dark:bg-[#1C1C1E] ${
+                                isMine ? 'self-end' : 'self-start'
                               }`}
                             >
-                              <div className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-white dark:bg-[#2C2C2E] border border-black/[0.08] dark:border-white/[0.1] shadow-xs text-[13px]">
-                                {Object.entries(msg.reactions).map(([uId, emoji]) => (
-                                  <span key={uId}>{emoji}</span>
-                                ))}
+                              {msg.storyReply.thumbnailUrl ? (
+                                <img
+                                  src={msg.storyReply.thumbnailUrl}
+                                  alt="Story"
+                                  className="w-9 h-12 rounded-lg object-cover shrink-0 bg-black/10"
+                                />
+                              ) : null}
+                              <div className="min-w-0 pr-1">
+                                <p className="text-[11px] font-medium text-[#8E8E93] truncate">
+                                  {msg.storyReply.authorName}
+                                </p>
+                                {msg.storyReply.storyCaption && (
+                                  <p className="text-[12px] text-black/80 dark:text-white/80 truncate mt-0.5">
+                                    <EmojiText text={msg.storyReply.storyCaption} emojiSize={13} />
+                                  </p>
+                                )}
                               </div>
                             </div>
                           )}
 
-                          {/* Sent / Seen + Time on latest outgoing message */}
-                          {isMine && (readReceipts || isLastMessage) && (
-                            <div className="flex items-center justify-end gap-1 mt-1 px-1 text-[11px] text-[#8E8E93] tabular-nums">
-                              <span>{formatClockTime(msg.timestamp)}</span>
-                              {msg.status === 'read' ? (
-                                <span className="inline-flex items-center gap-0.5 text-[#007AFF] font-medium">
-                                  · Seen <CheckCheck className="w-3 h-3" />
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-0.5">
-                                  · Sent <Check className="w-3 h-3" />
-                                </span>
-                              )}
+                          {msg.replyTo && (
+                            <div
+                              className={`flex flex-col mb-1 max-w-[74%] ${
+                                isMine ? 'items-end' : 'items-start'
+                              }`}
+                            >
+                              <span className="text-[11px] text-[#8E8E93] px-1 mb-0.5">
+                                {isMine ? t('you_replied', 'You replied') : `${msg.senderName} ${t('replied', 'replied')}`}
+                              </span>
+                              <div className="px-3 py-1.5 rounded-[14px] bg-[#F2F2F7] dark:bg-[#1C1C1E] text-[#8E8E93] text-[12.5px]">
+                                <p className="line-clamp-2">
+                                  <EmojiText text={msg.replyTo.text} emojiSize={13} />
+                                </p>
+                              </div>
                             </div>
                           )}
+
+                          {!isMine && isGroup && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleOpenUserProfile({
+                                  id: msg.senderId,
+                                  name: msg.senderName,
+                                  username: msg.senderUsername,
+                                  avatar: msg.senderAvatar,
+                                })
+                              }
+                              className="inline-flex items-center gap-1.5 mb-1 px-1 cursor-pointer bg-transparent border-0 text-left"
+                            >
+                              <Avatar src={msg.senderAvatar} name={msg.senderName} size="xs" />
+                              <span className="text-[12px] font-semibold text-[#8E8E93] hover:underline">
+                                {msg.senderName}
+                              </span>
+                            </button>
+                          )}
+
+                          <div className="max-w-[74%] flex flex-col">
+                            <div
+                              onTouchStart={(e) => {
+                                const touch = e.touches[0];
+                                startLongPress(msg, touch?.clientX, touch?.clientY, e.currentTarget, isMine);
+                              }}
+                              onTouchMove={(e) => {
+                                const touch = e.touches[0];
+                                handleLongPressMove(touch?.clientX, touch?.clientY);
+                              }}
+                              onTouchEnd={cancelLongPress}
+                              onTouchCancel={cancelLongPress}
+                              onMouseDown={(e) => startLongPress(msg, e.clientX, e.clientY, e.currentTarget, isMine)}
+                              onMouseMove={(e) => handleLongPressMove(e.clientX, e.clientY)}
+                              onMouseUp={cancelLongPress}
+                              onMouseLeave={cancelLongPress}
+                              onContextMenu={(e) => {
+                                e.preventDefault();
+                                openMessageMenu(msg, isMine, e.currentTarget);
+                              }}
+                              className={`px-3.5 py-2 text-[15px] leading-[1.38] break-words select-none relative transition-transform duration-150 ${
+                                selectedMenuMessage?.id === msg.id ? 'scale-[0.98]' : ''
+                              } ${
+                                isMine
+                                  ? outgoingBubbleClass
+                                  : 'bg-[#F2F2F7] dark:bg-[#1C1C1E] text-black dark:text-white rounded-[18px] rounded-bl-[5px]'
+                              }`}
+                            >
+                              {isMine && isCustomBubble && msgBubbleDef.renderCharacter('chat')}
+                              <p className={isMine && isCustomBubble ? msgBubbleDef.textClass : ''}>
+                                <EmojiText text={msg.text} emojiSize={17} />
+                              </p>
+
+                              {isTranslating && (
+                                <div
+                                  className={`mt-1.5 pt-1.5 border-t flex items-center gap-1.5 text-[12px] opacity-80 ${
+                                    isMine
+                                      ? 'border-white/20'
+                                      : 'border-black/10 dark:border-white/10'
+                                  }`}
+                                >
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                                  <span>{t('translating', 'Translating...')}</span>
+                                </div>
+                              )}
+
+                              {!isTranslating && isTranslationVisible && translationState?.translatedText && (
+                                <div
+                                  className={`mt-1.5 pt-1.5 border-t text-[13.5px] leading-[1.38] opacity-95 ${
+                                    isMine
+                                      ? 'border-white/20'
+                                      : 'border-black/10 dark:border-white/10'
+                                  } ${isMine && isCustomBubble ? msgBubbleDef.textClass : ''}`}
+                                >
+                                  <EmojiText text={translationState.translatedText} emojiSize={16} />
+                                </div>
+                              )}
+                            </div>
+
+                            {hasTranslation && !isTranslating && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setTranslationMap((prev) => ({
+                                    ...prev,
+                                    [transKey]: {
+                                      ...prev[transKey],
+                                      isVisible: !prev[transKey]?.isVisible,
+                                    },
+                                  }))
+                                }
+                                className={`mt-1 px-1 text-[11px] font-medium text-[#8E8E93] hover:text-[#007AFF] cursor-pointer ${
+                                  isMine ? 'self-end' : 'self-start'
+                                }`}
+                              >
+                                {isTranslationVisible
+                                  ? t('hide_translation', 'Hide translation')
+                                  : t('show_translation', 'Show translation')}
+                              </button>
+                            )}
+
+                            {/* Reactions */}
+                            {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                              <div
+                                className={`flex items-center gap-1 -mt-1.5 z-10 ${
+                                  isMine ? 'justify-end pr-2' : 'justify-start pl-2'
+                                }`}
+                              >
+                                <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white dark:bg-[#2C2C2E] shadow-sm">
+                                  {Object.entries(msg.reactions).map(([uId, emoji]) => (
+                                    <AppleEmoji key={uId} char={emoji} size={14} />
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Minimal Neutral Grey Sent / Seen Label on Latest Outgoing Message Only */}
+                            {isLastOutgoing && (
+                              <div className="flex items-center justify-end mt-1 px-1 text-[11px] text-[#8E8E93]">
+                                <span>
+                                  {!activeConversation.isRequest && msg.status === 'read' && readReceipts
+                                    ? t('seen', 'Seen')
+                                    : t('sent', 'Sent')}
+                                </span>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })
+                      );
+                    });
+                  })()
                 )}
 
                 {/* Animated 3-Dot Typing Bubble */}
@@ -1253,7 +2022,7 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: 4 }}
                       transition={{ duration: 0.16 }}
-                      className="inline-flex items-center gap-1.5 px-4 py-3 rounded-[20px] rounded-bl-[6px] bg-[#F2F2F7] dark:bg-[#1C1C1E] self-start"
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-[18px] rounded-bl-[5px] bg-[#F2F2F7] dark:bg-[#1C1C1E] self-start"
                     >
                       <span className="w-2 h-2 rounded-full bg-[#8E8E93] animate-bounce [animation-delay:-0.32s]" />
                       <span className="w-2 h-2 rounded-full bg-[#8E8E93] animate-bounce [animation-delay:-0.16s]" />
@@ -1263,6 +2032,7 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                 </AnimatePresence>
 
                 <div ref={messagesEndRef} />
+                </div>
               </div>
 
               {/* Floating Scroll-to-Bottom Button */}
@@ -1276,8 +2046,8 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                     onClick={() =>
                       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
                     }
-                    aria-label="Scroll to latest message"
-                    className="absolute right-4 bottom-24 z-20 w-10 h-10 rounded-full bg-white dark:bg-[#2C2C2E] border border-black/[0.08] dark:border-white/[0.1] shadow-md flex items-center justify-center text-[#007AFF] cursor-pointer ios-press"
+                    aria-label={t('scroll_to_latest', 'Scroll to latest message')}
+                    className="absolute right-4 bottom-24 z-20 w-10 h-10 rounded-full bg-white dark:bg-[#2C2C2E] shadow-md flex items-center justify-center text-[#007AFF] cursor-pointer ios-press"
                   >
                     <ArrowDown className="w-5 h-5" />
                   </motion.button>
@@ -1286,22 +2056,22 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
 
               {/* Reply Context Strip */}
               {replyingMessage && (
-                <div className="px-4 py-2 bg-[#F2F2F7] dark:bg-[#1C1C1E] border-t border-black/[0.06] dark:border-white/[0.08] flex items-center justify-between gap-3 shrink-0">
+                <div className="px-4 py-2 bg-[#F2F2F7] dark:bg-[#1C1C1E] flex items-center justify-between gap-3 shrink-0">
                   <div className="flex items-center gap-2.5 min-w-0 flex-1">
                     <div className="w-[3px] h-7 rounded-full bg-[#007AFF] shrink-0" />
                     <div className="min-w-0 flex-1">
                       <p className="text-[12px] font-semibold text-[#007AFF] truncate">
-                        Replying to {replyingMessage.senderName}
+                        {t('replying_to', 'Replying to')} {replyingMessage.senderName}
                       </p>
                       <p className="text-[13px] text-[#8E8E93] truncate">
-                        {replyingMessage.text}
+                        <EmojiText text={replyingMessage.text} emojiSize={14} />
                       </p>
                     </div>
                   </div>
                   <button
                     type="button"
                     onClick={() => setReplyingMessage(null)}
-                    aria-label="Cancel reply"
+                    aria-label={t('cancel', 'Cancel')}
                     className="w-8 h-8 rounded-full flex items-center justify-center text-[#8E8E93] hover:text-black dark:hover:text-white cursor-pointer ios-press"
                   >
                     <X className="w-4 h-4" />
@@ -1312,14 +2082,15 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
               {/* Keyboard-Safe Sticky Composer Bar */}
               <div
                 id="chat-input-bar-container"
-                className="px-3 py-2.5 pb-safe bg-white/95 dark:bg-black/95 backdrop-blur-xl border-t border-black/[0.06] dark:border-white/[0.08] shrink-0"
+                style={{ paddingBottom: viewportBottomInset > 0 ? `${viewportBottomInset + 8}px` : undefined }}
+                className="px-3 py-2 pb-safe bg-white/95 dark:bg-black/95 backdrop-blur-xl shrink-0"
               >
                 {isCurrentBlocked ? (
-                  <div className="px-4 py-2.5 rounded-2xl bg-[#F2F2F7] dark:bg-[#1C1C1E] border border-black/[0.08] dark:border-white/[0.1] flex items-center justify-between gap-3">
+                  <div className="px-4 py-2 rounded-2xl bg-[#F2F2F7] dark:bg-[#1C1C1E] flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2 min-w-0">
                       <Ban className="w-4 h-4 text-black dark:text-white shrink-0" />
                       <span className="text-[14px] font-medium text-black dark:text-white truncate">
-                        You blocked {displayName}
+                        {t('you_blocked', 'You blocked')} {displayName}
                       </span>
                     </div>
                     <Button
@@ -1327,45 +2098,51 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                       size="sm"
                       onClick={() => {
                         setBlockedConvs((prev) => ({ ...prev, [activeConvId]: false }));
-                        showToast('Account unblocked', { type: 'success' });
+                        if (partner?.id) onToggleBlockUser?.(partner.id, false);
+                        showToast(t('account_unblocked', 'Account unblocked'), { type: 'success' });
                       }}
                     >
-                      Unblock
+                      {t('unblock', 'Unblock')}
                     </Button>
                   </div>
                 ) : (
-                  <form onSubmit={handleSend} className="flex items-center gap-2">
+                  <form onSubmit={handleSend} className="flex items-center gap-1.5">
                     <button
                       type="button"
                       onClick={() => {
                         setEmojiPickerTarget('composer');
                         setShowEmojiPicker(true);
                       }}
-                      aria-label="Insert emoji"
-                      className="w-10 h-10 rounded-full flex items-center justify-center text-[#8E8E93] hover:text-[#007AFF] cursor-pointer ios-press shrink-0"
+                      aria-label={t('insert_emoji', 'Insert emoji')}
+                      className="w-9 h-9 rounded-full flex items-center justify-center text-[#8E8E93] hover:text-[#007AFF] cursor-pointer ios-press shrink-0"
                     >
                       <Smile className="w-5 h-5" />
                     </button>
 
                     <div
                       id="chat-input-pill"
-                      className="flex-1 flex items-center min-h-[42px] rounded-full bg-[#F2F2F7] dark:bg-[#1C1C1E] pl-4 pr-1.5 border border-black/[0.04] dark:border-white/[0.06] focus-within:ring-2 focus-within:ring-[#007AFF]/25 transition-all"
+                      className="flex-1 flex items-center min-h-[40px] rounded-full bg-[#F2F2F7] dark:bg-[#1C1C1E] pl-4 pr-1.5 focus-within:ring-2 focus-within:ring-[#007AFF]/25 transition-all"
                     >
                       <input
                         id="chat-message-input"
                         ref={inputRef}
                         type="text"
                         value={inputText}
+                        onFocus={() => {
+                          setTimeout(() => {
+                            messagesEndRef.current?.scrollIntoView?.({ behavior: 'smooth' });
+                          }, 120);
+                        }}
                         onChange={(e) => handleInputChange(e.target.value)}
-                        placeholder="Message..."
-                        className="flex-1 bg-transparent border-0 outline-none text-[16px] text-black dark:text-white placeholder:text-[#8E8E93] py-2 pr-2"
+                        placeholder={t('message_placeholder', 'Message...')}
+                        className="flex-1 bg-transparent border-0 outline-none text-[16px] text-black dark:text-white placeholder:text-[#8E8E93] py-1.5 pr-2"
                       />
 
                       <button
                         type="submit"
                         disabled={!inputText.trim()}
-                        aria-label="Send message"
-                        className={`w-[34px] h-[34px] rounded-full flex items-center justify-center shrink-0 text-white transition-opacity cursor-pointer ios-press disabled:opacity-35 ${activeThemeConfig.gradient}`}
+                        aria-label={t('send_message', 'Send message')}
+                        className={`w-[32px] h-[32px] rounded-full flex items-center justify-center shrink-0 text-white transition-opacity cursor-pointer ios-press disabled:opacity-35 ${activeThemeConfig.gradient}`}
                       >
                         <Send className="w-4 h-4 translate-x-px" />
                       </button>
@@ -1382,20 +2159,20 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
       <BottomSheet
         isOpen={isComposeOpen}
         onClose={() => setIsComposeOpen(false)}
-        title="New Message"
+        title={t('new_message', 'New Message')}
       >
         <div className="px-4 py-3 space-y-4">
           <SearchBar
             value={composeSearch}
             onChange={setComposeSearch}
-            placeholder="Search people by name or @username"
+            placeholder={t('search_people_hint', 'Search people by name or @username')}
             autoFocus
           />
 
           <div className="flex items-end gap-2">
             <div className="flex-1">
               <TextField
-                label="Or message by username"
+                label={t('or_message_by_username', 'Or message by username')}
                 value={customUsername}
                 onChange={(e) => setCustomUsername(e.target.value)}
                 placeholder="e.g. ariana_studio"
@@ -1411,23 +2188,23 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                   id: `custom-${clean.toLowerCase()}`,
                   name: clean,
                   username: clean.toLowerCase(),
-                  avatar: `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(clean)}`,
+                  avatar: '',
                 });
               }}
             >
-              Chat
+              {t('chat', 'Chat')}
             </Button>
           </div>
 
           <div>
             <p className="text-[13px] font-medium text-[#8E8E93] uppercase tracking-wider mb-2">
-              Suggested Creators
+              {t('suggested_creators', 'Suggested Creators')}
             </p>
             {composeCandidates.length === 0 ? (
               <EmptyState
                 icon={<UserPlus className="w-6 h-6" />}
-                title="No Matching People"
-                description="Try another name or enter any @username above."
+                title={t('no_matching_people', 'No Matching People')}
+                description=""
               />
             ) : (
               <div className="divide-y divide-black/[0.06] dark:divide-white/[0.08]">
@@ -1462,126 +2239,228 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
         </div>
       </BottomSheet>
 
-      {/* ==================== MESSAGE CONTEXT MENU SHEET ==================== */}
-      <BottomSheet
-        isOpen={Boolean(selectedMenuMessage && !showEmojiPicker)}
-        onClose={() => setSelectedMenuMessage(null)}
-        title={selectedMenuMessage ? formatChatTimestamp(selectedMenuMessage.timestamp) : undefined}
-      >
-        {selectedMenuMessage && activeConversation && (
-          <div className="px-4 py-3 space-y-4">
-            {/* Quick Emoji Reaction Bar */}
-            <div className="flex items-center justify-between px-2 py-2.5 rounded-2xl bg-[#F2F2F7] dark:bg-[#2C2C2E]">
-              {quickReactions.slice(0, 6).map((emoji) => {
-                const isSelected = selectedMenuMessage.reactions?.[currentUser.id] === emoji;
-                return (
-                  <button
-                    key={emoji}
-                    type="button"
-                    onClick={() => {
-                      soundFX.playClick();
-                      triggerHaptic('medium');
-                      onReactMessage(activeConversation.id, selectedMenuMessage.id, emoji);
-                      setSelectedMenuMessage(null);
-                    }}
-                    className={`w-10 h-10 rounded-full text-[22px] flex items-center justify-center transition-transform hover:scale-115 active:scale-95 cursor-pointer ${
-                      isSelected ? 'bg-[#007AFF]/15 ring-2 ring-[#007AFF]' : ''
-                    }`}
-                  >
-                    {emoji}
-                  </button>
-                );
-              })}
-              <button
-                type="button"
-                onClick={() => {
-                  setEmojiPickerTarget('reaction');
-                  setShowEmojiPicker(true);
+      {/* ==================== INSTAGRAM-STYLE FLOATING MESSAGE CONTEXT MENU ==================== */}
+      <AnimatePresence>
+        {selectedMenuMessage && activeConversation && !showEmojiPicker && (() => {
+          const vw = typeof window !== 'undefined' ? window.innerWidth : 390;
+          const vh = typeof window !== 'undefined' ? window.innerHeight : 844;
+          const fallbackAnchor: MessageMenuAnchor = menuAnchor || {
+            top: vh * 0.42,
+            left: selectedMenuMessage.senderId === currentUser.id ? vw * 0.45 : 16,
+            right: selectedMenuMessage.senderId === currentUser.id ? vw - 16 : vw * 0.58,
+            bottom: vh * 0.48,
+            width: vw * 0.4,
+            height: 44,
+            isMine: selectedMenuMessage.senderId === currentUser.id,
+          };
+          const layout = computeFloatingMessageMenuLayout(
+            fallbackAnchor,
+            vw,
+            vh,
+            showMoreMenuActions
+          );
+          const isOwnMsg = selectedMenuMessage.senderId === currentUser.id;
+          const translationState = translationMap[`${selectedMenuMessage.id}:${language}`];
+          const translateLabel = translationState?.translatedText
+            ? translationState.isVisible
+              ? t('hide_translation', 'Hide translation')
+              : t('show_translation', 'Show translation')
+            : t('translate', 'Translate');
+
+          return (
+            <motion.div
+              key="instagram-message-context-overlay"
+              data-testid="message-context-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.14 }}
+              onClick={closeMessageMenu}
+              className="fixed inset-0 z-50 bg-black/20 dark:bg-black/45 backdrop-blur-[2px]"
+            >
+              {/* Floating Reaction Bar Pill (above contextual menu) */}
+              <motion.div
+                data-testid="message-reaction-bar"
+                initial={{ opacity: 0, scale: 0.9, y: 6 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.92, y: 4 }}
+                transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  position: 'fixed',
+                  top: layout.reactionBarTop,
+                  left: layout.reactionBarLeft,
+                  width: layout.reactionBarWidth,
                 }}
-                aria-label="More reactions"
-                className="w-10 h-10 rounded-full bg-white dark:bg-[#1C1C1E] flex items-center justify-center text-[#8E8E93] hover:text-black dark:hover:text-white cursor-pointer ios-press"
+                className="rounded-full bg-white dark:bg-[#262628] shadow-[0_8px_28px_rgba(0,0,0,0.14)] px-2.5 py-1.5 flex items-center justify-between"
               >
-                <Plus className="w-5 h-5" />
-              </button>
-            </div>
+                {quickReactions.slice(0, 6).map((emoji) => {
+                  const isSelected = selectedMenuMessage.reactions?.[currentUser.id] === emoji;
+                  return (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => {
+                        triggerHaptic('medium');
+                        onReactMessage(activeConversation.id, selectedMenuMessage.id, emoji);
+                        closeMessageMenu();
+                      }}
+                      aria-label={emoji}
+                      className={`w-8 h-8 rounded-full flex items-center justify-center transition-transform hover:scale-115 active:scale-95 cursor-pointer ${
+                        isSelected ? 'bg-[#007AFF]/12 dark:bg-[#007AFF]/25' : ''
+                      }`}
+                    >
+                      <AppleEmoji char={emoji} size={22} />
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmojiPickerTarget('reaction');
+                    setShowEmojiPicker(true);
+                  }}
+                  aria-label={t('choose_emoji', 'Choose Emoji')}
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-[#8E8E93] hover:text-black dark:hover:text-white hover:bg-black/[0.04] dark:hover:bg-white/[0.06] cursor-pointer active:scale-95 transition-colors"
+                >
+                  <Plus className="w-[18px] h-[18px]" strokeWidth={2.2} />
+                </button>
+              </motion.div>
 
-            {/* Action List */}
-            <div className="rounded-[18px] bg-[#F2F2F7] dark:bg-[#2C2C2E] divide-y divide-black/[0.06] dark:divide-white/[0.08] overflow-hidden">
-              <button
-                type="button"
-                onClick={() => {
-                  setReplyingMessage(selectedMenuMessage);
-                  setSelectedMenuMessage(null);
-                  inputRef.current?.focus();
+              {/* Floating Compact Contextual Action Menu */}
+              <motion.div
+                data-testid="message-action-menu"
+                initial={{ opacity: 0, scale: 0.94, y: -4 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: -4 }}
+                transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  position: 'fixed',
+                  top: layout.menuTop,
+                  left: layout.menuLeft,
+                  width: layout.menuWidth,
                 }}
-                className="w-full px-4 py-3.5 flex items-center justify-between text-[16px] cursor-pointer hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
+                className="rounded-[24px] bg-white dark:bg-[#262628] shadow-[0_12px_36px_rgba(0,0,0,0.16)] overflow-hidden text-black dark:text-white"
               >
-                <span>Reply</span>
-                <Reply className="w-5 h-5 text-[#8E8E93]" />
-              </button>
+                {!showMoreMenuActions ? (
+                  <div className="py-1.5">
+                    {selectedMenuMessage.timestamp > 0 && (
+                      <div className="px-4 pt-1.5 pb-1 text-[11px] font-medium text-[#8E8E93] tracking-tight">
+                        {formatLocalizedTime(selectedMenuMessage.timestamp, language)}
+                      </div>
+                    )}
 
-              <button
-                type="button"
-                onClick={() => {
-                  if (onForwardMessage) onForwardMessage(selectedMenuMessage);
-                  setSelectedMenuMessage(null);
-                }}
-                className="w-full px-4 py-3.5 flex items-center justify-between text-[16px] cursor-pointer hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
-              >
-                <span>Forward</span>
-                <Send className="w-5 h-5 text-[#8E8E93]" />
-              </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReplyingMessage(selectedMenuMessage);
+                        closeMessageMenu();
+                        inputRef.current?.focus();
+                      }}
+                      className="w-full px-4 py-[9px] flex items-center gap-3 text-[15px] leading-tight text-left cursor-pointer hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.07] dark:active:bg-white/[0.09] transition-colors"
+                    >
+                      <Reply className="w-[18px] h-[18px] shrink-0" strokeWidth={1.9} />
+                      <span className="truncate">{t('reply', 'Reply')}</span>
+                    </button>
 
-              <button
-                type="button"
-                onClick={() => handleCopy(selectedMenuMessage.text)}
-                className="w-full px-4 py-3.5 flex items-center justify-between text-[16px] cursor-pointer hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
-              >
-                <span>Copy</span>
-                <Copy className="w-5 h-5 text-[#8E8E93]" />
-              </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEmojiPickerTarget('reaction');
+                        setShowEmojiPicker(true);
+                      }}
+                      className="w-full px-4 py-[9px] flex items-center gap-3 text-[15px] leading-tight text-left cursor-pointer hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.07] dark:active:bg-white/[0.09] transition-colors"
+                    >
+                      <SmilePlus className="w-[18px] h-[18px] shrink-0" strokeWidth={1.9} />
+                      <span className="truncate">{t('add_sticker', 'Add sticker')}</span>
+                    </button>
 
-              <button
-                type="button"
-                onClick={() => handleTranslate(selectedMenuMessage)}
-                className="w-full px-4 py-3.5 flex items-center justify-between text-[16px] cursor-pointer hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
-              >
-                <span>
-                  {translationMap[selectedMenuMessage.id]?.isTranslated
-                    ? 'Show Original'
-                    : 'Translate'}
-                </span>
-                <Languages className="w-5 h-5 text-[#007AFF]" />
-              </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onForwardMessage) onForwardMessage(selectedMenuMessage);
+                        closeMessageMenu();
+                      }}
+                      className="w-full px-4 py-[9px] flex items-center gap-3 text-[15px] leading-tight text-left cursor-pointer hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.07] dark:active:bg-white/[0.09] transition-colors"
+                    >
+                      <Send className="w-[18px] h-[18px] shrink-0" strokeWidth={1.9} />
+                      <span className="truncate">{t('forward', 'Forward')}</span>
+                    </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  onDeleteMessage(activeConversation.id, selectedMenuMessage.id);
-                  setSelectedMenuMessage(null);
-                  showToast('Message deleted', { type: 'info', durationMs: 1800 });
-                }}
-                className="w-full px-4 py-3.5 flex items-center justify-between text-[16px] font-semibold text-black dark:text-white cursor-pointer hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
-              >
-                <span>Delete</span>
-                <Trash2 className="w-5 h-5" />
-              </button>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(selectedMenuMessage.text)}
+                      className="w-full px-4 py-[9px] flex items-center gap-3 text-[15px] leading-tight text-left cursor-pointer hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.07] dark:active:bg-white/[0.09] transition-colors"
+                    >
+                      <Copy className="w-[18px] h-[18px] shrink-0" strokeWidth={1.9} />
+                      <span className="truncate">{t('copy', 'Copy')}</span>
+                    </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedMenuMessage(null);
-                  setIsReportSheetOpen(true);
-                }}
-                className="w-full px-4 py-3.5 flex items-center justify-between text-[16px] font-semibold text-black dark:text-white cursor-pointer hover:bg-black/[0.04] dark:hover:bg-white/[0.04]"
-              >
-                <span>Report</span>
-                <AlertCircle className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-        )}
-      </BottomSheet>
+                    <button
+                      type="button"
+                      onClick={() => handleTranslate(selectedMenuMessage)}
+                      className="w-full px-4 py-[9px] flex items-center gap-3 text-[15px] leading-tight text-left cursor-pointer hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.07] dark:active:bg-white/[0.09] transition-colors"
+                    >
+                      <Languages className="w-[18px] h-[18px] shrink-0" strokeWidth={1.9} />
+                      <span className="truncate">{translateLabel}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReportTargetType('message');
+                        setReportTargetId(selectedMenuMessage.id);
+                        closeMessageMenu();
+                        setIsReportSheetOpen(true);
+                      }}
+                      className="w-full px-4 py-[9px] flex items-center gap-3 text-[15px] leading-tight text-left text-[#FF3B30] cursor-pointer hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.07] dark:active:bg-white/[0.09] transition-colors"
+                    >
+                      <AlertCircle className="w-[18px] h-[18px] shrink-0" strokeWidth={1.9} />
+                      <span className="truncate">{t('report', 'Report')}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowMoreMenuActions(true)}
+                      className="w-full px-4 py-[9px] flex items-center justify-between text-[15px] leading-tight text-left cursor-pointer hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.07] dark:active:bg-white/[0.09] transition-colors"
+                    >
+                      <span className="flex items-center gap-3 min-w-0">
+                        <MoreHorizontal className="w-[18px] h-[18px] shrink-0" strokeWidth={1.9} />
+                        <span className="truncate">{t('more', 'More')}</span>
+                      </span>
+                      <ChevronRight className="w-4 h-4 text-[#8E8E93] shrink-0" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="py-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setShowMoreMenuActions(false)}
+                      className="w-full px-3.5 py-2 flex items-center gap-2 text-[14px] font-medium text-[#8E8E93] hover:text-black dark:hover:text-white cursor-pointer border-b border-black/[0.06] dark:border-white/[0.08]"
+                    >
+                      <ChevronLeft className="w-4 h-4 shrink-0" />
+                      <span>{t('back', 'Back')}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPendingDeleteMessage(selectedMenuMessage);
+                        setDeleteForEveryoneChecked(false);
+                        closeMessageMenu();
+                      }}
+                      className="w-full px-4 py-2.5 flex items-center gap-3 text-[15px] leading-tight text-left text-[#FF3B30] cursor-pointer hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:bg-black/[0.07] dark:active:bg-white/[0.09] transition-colors"
+                    >
+                      <Trash2 className="w-[18px] h-[18px] shrink-0" strokeWidth={1.9} />
+                      <span className="truncate">{t('delete', 'Delete')}</span>
+                    </button>
+                  </div>
+                )}
+              </motion.div>
+            </motion.div>
+          );
+        })()}
+      </AnimatePresence>
 
       {/* ==================== EMOJI PICKER MODAL ==================== */}
       <InstagramEmojiPickerModal
@@ -1589,18 +2468,17 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
         theme={currentUser.theme === 'light' ? 'light' : 'dark'}
         onClose={() => {
           setShowEmojiPicker(false);
-          if (emojiPickerTarget === 'reaction') setSelectedMenuMessage(null);
+          if (emojiPickerTarget === 'reaction') closeMessageMenu();
         }}
         onSelectReaction={(emoji) => {
           if (emojiPickerTarget === 'reaction' && selectedMenuMessage && activeConversation) {
-            soundFX.playClick();
             triggerHaptic('medium');
             onReactMessage(activeConversation.id, selectedMenuMessage.id, emoji);
           } else {
             setInputText((prev) => prev + emoji);
           }
           setShowEmojiPicker(false);
-          setSelectedMenuMessage(null);
+          closeMessageMenu();
         }}
         onQuickReactionsChange={(next) => setQuickReactions(next)}
       />
@@ -1609,7 +2487,7 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
       <BottomSheet
         isOpen={isThemeSheetOpen}
         onClose={() => setIsThemeSheetOpen(false)}
-        title="Chat Theme"
+        title={t('chat_theme', 'Chat Theme')}
       >
         <div className="px-4 py-3 space-y-2">
           {CHAT_THEMES.map((cfg) => {
@@ -1621,7 +2499,7 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                 onClick={() => {
                   setChatThemes((prev) => ({ ...prev, [activeConvId]: cfg.name }));
                   setIsThemeSheetOpen(false);
-                  showToast(`Theme set to ${cfg.name}`, { type: 'success', durationMs: 1800 });
+                  showToast(`${t('chat_theme', 'Chat Theme')}: ${cfg.name}`, { type: 'success', durationMs: 1800 });
                 }}
                 className="w-full p-3 rounded-2xl flex items-center justify-between bg-[#F2F2F7] dark:bg-[#2C2C2E] cursor-pointer ios-press"
               >
@@ -1645,7 +2523,7 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
         onSave={(newStyleId) => {
           setGlobalBubbleStyle(newStyleId);
           safeStorage.setItem('enmmoe_bubble_style', newStyleId);
-          showToast('Bubble style updated', { type: 'success', durationMs: 1800 });
+          showToast(t('status_updated', 'Saved successfully'), { type: 'success', durationMs: 1800 });
         }}
       />
 
@@ -1653,37 +2531,41 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
       <BottomSheet
         isOpen={isChatControlsOpen}
         onClose={() => setIsChatControlsOpen(false)}
-        title="Chat Controls"
+        title={t('chat_controls', 'Chat Controls')}
       >
         <div className="px-4 py-3 space-y-5">
           <div className="rounded-[18px] bg-[#F2F2F7] dark:bg-[#2C2C2E] divide-y divide-black/[0.06] dark:divide-white/[0.08]">
             <div className="px-4 py-3 flex items-center justify-between">
               <div className="pr-3">
-                <p className="text-[16px] font-medium">Read Receipts</p>
+                <p className="text-[16px] font-medium">{t('read_receipts', 'Read Receipts')}</p>
                 <p className="text-[13px] text-[#8E8E93]">
                   Show people when you have seen their messages.
                 </p>
               </div>
-              <Toggle checked={readReceipts} onChange={setReadReceipts} ariaLabel="Read receipts" />
+              <Toggle
+                checked={readReceipts}
+                onChange={(val) => onUpdatePrivacy?.({ readReceiptsEnabled: val })}
+                ariaLabel={t('read_receipts', 'Read Receipts')}
+              />
             </div>
 
             <div className="px-4 py-3 flex items-center justify-between">
               <div className="pr-3">
-                <p className="text-[16px] font-medium">Typing Indicators</p>
+                <p className="text-[16px] font-medium">{t('typing_indicators', 'Typing Indicators')}</p>
                 <p className="text-[13px] text-[#8E8E93]">
                   Show when you are actively typing.
                 </p>
               </div>
               <Toggle
                 checked={typingIndicatorsEnabled}
-                onChange={setTypingIndicatorsEnabled}
-                ariaLabel="Typing indicators"
+                onChange={(val) => onUpdatePrivacy?.({ typingIndicatorsEnabled: val })}
+                ariaLabel={t('typing_indicators', 'Typing Indicators')}
               />
             </div>
           </div>
 
           <div>
-            <p className="text-[15px] font-semibold mb-1">Disappearing Messages</p>
+            <p className="text-[15px] font-semibold mb-1">{t('disappearing_messages', 'Disappearing Messages')}</p>
             <p className="text-[13px] text-[#8E8E93] mb-3">
               New messages in this chat clear automatically after the selected timer.
             </p>
@@ -1692,12 +2574,12 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                 const selected = currentDisappearing === opt;
                 const label =
                   opt === 'off'
-                    ? 'Off'
+                    ? t('off', 'Off')
                     : opt === '24h'
-                    ? '24h'
+                    ? t('hours_24', '24 hours')
                     : opt === '7d'
-                    ? '7 days'
-                    : '90 days';
+                    ? t('days_7', '7 days')
+                    : t('days_90', '90 days');
                 return (
                   <button
                     key={opt}
@@ -1705,7 +2587,7 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                     onClick={() => {
                       if (!activeConvId) return;
                       setDisappearingByConv((prev) => ({ ...prev, [activeConvId]: opt }));
-                      showToast(`Disappearing messages: ${label}`, {
+                      showToast(`${t('disappearing_messages', 'Disappearing Messages')}: ${label}`, {
                         type: 'success',
                         durationMs: 1800,
                       });
@@ -1729,13 +2611,13 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
       <BottomSheet
         isOpen={isPrivacySheetOpen}
         onClose={() => setIsPrivacySheetOpen(false)}
-        title="Privacy & Safety"
+        title={t('privacy_safety', 'Privacy & Safety')}
       >
         <div className="px-4 py-3 space-y-4">
           <div className="p-3.5 rounded-2xl bg-[#007AFF]/12 flex items-start gap-3">
             <ShieldCheck className="w-5 h-5 text-[#007AFF] shrink-0 mt-0.5" />
             <div>
-              <p className="text-[15px] font-semibold text-[#007AFF]">Privacy & Moderation</p>
+              <p className="text-[15px] font-semibold text-[#007AFF]">{t('privacy_moderation', 'Privacy & Moderation')}</p>
               <p className="text-[13px] text-[#8E8E93] mt-0.5 leading-relaxed">
                 Manage blocking, reporting, and disappearing message controls for this conversation.
               </p>
@@ -1747,21 +2629,29 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
               type="button"
               onClick={() => {
                 setIsPrivacySheetOpen(false);
-                setIsBlockDialogOpen(true);
+                if (isCurrentBlocked) {
+                  setBlockedConvs((prev) => ({ ...prev, [activeConvId]: false }));
+                  if (partner?.id) onToggleBlockUser?.(partner.id, false);
+                  showToast(t('account_unblocked', 'Account unblocked'), { type: 'success' });
+                } else {
+                  setIsBlockDialogOpen(true);
+                }
               }}
               className="w-full px-4 py-3.5 text-left text-[16px] text-black dark:text-white font-semibold cursor-pointer"
             >
-              {isCurrentBlocked ? `Unblock ${displayName}` : `Block ${displayName}`}
+              {isCurrentBlocked ? `${t('unblock', 'Unblock')} ${displayName}` : `${t('block', 'Block')} ${displayName}`}
             </button>
             <button
               type="button"
               onClick={() => {
+                setReportTargetType('conversation');
+                setReportTargetId(activeConvId);
                 setIsPrivacySheetOpen(false);
                 setIsReportSheetOpen(true);
               }}
               className="w-full px-4 py-3.5 text-left text-[16px] text-black dark:text-white font-semibold cursor-pointer"
             >
-              Report Conversation
+              {t('report_conversation', 'Report Conversation')}
             </button>
           </div>
         </div>
@@ -1771,14 +2661,14 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
       <BottomSheet
         isOpen={isNicknameSheetOpen}
         onClose={() => setIsNicknameSheetOpen(false)}
-        title="Edit Nickname"
+        title={t('nickname', 'Nickname')}
       >
         <div className="px-4 py-3 space-y-4">
           <TextField
-            label={`Nickname for ${partner?.name || 'Contact'}`}
+            label={`${t('nickname', 'Nickname')} · ${partner?.name || ''}`}
             value={tempNickname}
             onChange={(e) => setTempNickname(e.target.value)}
-            placeholder={partner?.name || 'Enter nickname'}
+            placeholder={partner?.name || t('set_name', 'Set name')}
           />
           <div className="flex items-center gap-2.5">
             {customNickname && (
@@ -1792,10 +2682,10 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                     return next;
                   });
                   setIsNicknameSheetOpen(false);
-                  showToast('Nickname cleared', { type: 'info' });
+                  showToast(t('nickname_cleared', 'Nickname cleared'), { type: 'info' });
                 }}
               >
-                Reset
+                {t('reset', 'Reset')}
               </Button>
             )}
             <Button
@@ -1808,7 +2698,7 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                     ...prev,
                     [activeConvId]: tempNickname.trim(),
                   }));
-                  showToast(`Nickname saved`, { type: 'success' });
+                  showToast(t('nickname_saved', 'Nickname saved'), { type: 'success' });
                 } else {
                   setNicknames((prev) => {
                     const next = { ...prev };
@@ -1819,7 +2709,7 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                 setIsNicknameSheetOpen(false);
               }}
             >
-              Save Nickname
+              {t('save_nickname', 'Save Nickname')}
             </Button>
           </div>
         </div>
@@ -1829,11 +2719,11 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
       <BottomSheet
         isOpen={isGroupCreateOpen}
         onClose={() => setIsGroupCreateOpen(false)}
-        title="New Group Chat"
+        title={t('new_group_chat', 'New Group Chat')}
       >
         <div className="px-4 py-3 space-y-4">
           <TextField
-            label="Group Name"
+            label={t('group_name', 'Group Name')}
             value={newGroupName}
             onChange={(e) => setNewGroupName(e.target.value)}
             placeholder="e.g. Weekend Readers"
@@ -1886,13 +2776,20 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
             disabled={selectedGroupUsers.length === 0}
             className="w-full"
             onClick={() => {
+              const title = newGroupName.trim() || 'Group Chat';
+              if (onCreateGroupConversation) {
+                onCreateGroupConversation(title, selectedGroupUsers);
+                setIsGroupCreateOpen(false);
+                setIsDetailsOpen(false);
+                return;
+              }
               const members = allConversations
                 .map((c) => c.participants[0])
                 .filter((p) => p && selectedGroupUsers.includes(p.id));
               const newGroup: SocialConversation = {
                 id: `group-${Date.now()}`,
                 type: 'group',
-                title: newGroupName.trim() || 'Group Chat',
+                title,
                 participants: members.map((m) => ({
                   id: m!.id,
                   name: m!.name,
@@ -1907,23 +2804,27 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
               setIsGroupCreateOpen(false);
               setIsDetailsOpen(false);
               onSelectConversation(newGroup.id);
-              showToast(`Created "${newGroup.title}"`, { type: 'success' });
+              showToast(`${title}`, { type: 'success' });
             }}
           >
-            Create Group ({selectedGroupUsers.length})
+            {t('create_group', 'Create Group')} ({selectedGroupUsers.length})
           </Button>
         </div>
       </BottomSheet>
 
-      {/* ==================== REPORT CONVERSATION SHEET ==================== */}
+      {/* ==================== REPORT CONVERSATION / MESSAGE SHEET ==================== */}
       <BottomSheet
         isOpen={isReportSheetOpen}
         onClose={() => setIsReportSheetOpen(false)}
-        title="Report Conversation"
+        title={
+          reportTargetType === 'message'
+            ? t('report_message', 'Report Message')
+            : t('report_conversation', 'Report Conversation')
+        }
       >
         <div className="px-4 py-3 space-y-4">
           <p className="text-[15px] text-[#8E8E93]">
-            Select a reason for reporting this conversation.
+            Select a reason for submitting this report.
           </p>
           <div className="space-y-1.5">
             {[
@@ -1952,11 +2853,16 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
             size="md"
             className="w-full"
             onClick={() => {
+              onReportTarget?.(
+                reportTargetType,
+                reportTargetId || activeConvId,
+                reportReason
+              );
               setIsReportSheetOpen(false);
-              showToast('Report submitted', { type: 'success' });
+              showToast(t('report_submitted', 'Report submitted'), { type: 'success' });
             }}
           >
-            Submit Report
+            {t('submit_report', 'Submit Report')}
           </Button>
         </div>
       </BottomSheet>
@@ -1965,18 +2871,110 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
       <Dialog
         isOpen={isBlockDialogOpen}
         onClose={() => setIsBlockDialogOpen(false)}
-        title={`Block ${displayName}?`}
+        title={`${t('block', 'Block')} ${displayName}?`}
         description="They will no longer be able to send you messages. You can unblock them anytime in conversation details."
-        confirmLabel="Block"
+        confirmLabel={t('block', 'Block')}
         destructive
         onConfirm={() => {
           if (activeConvId) {
             setBlockedConvs((prev) => ({ ...prev, [activeConvId]: true }));
-            showToast(`${displayName} blocked`, { type: 'info' });
+            if (partner?.id) onToggleBlockUser?.(partner.id, true);
+            showToast(`${displayName} · ${t('blocked', 'Blocked')}`, { type: 'info' });
           }
           setIsBlockDialogOpen(false);
         }}
       />
+
+      {/* ==================== DELETE MESSAGE CONFIRMATION DIALOG ==================== */}
+      <AnimatePresence>
+        {pendingDeleteMessage && activeConversation && (
+          <div
+            data-testid="delete-message-dialog-backdrop"
+            className="fixed inset-0 z-[70] flex items-center justify-center p-6"
+          >
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.14 }}
+              onClick={closeDeleteDialog}
+              className="absolute inset-0 bg-black/35 dark:bg-black/65 backdrop-blur-[2px]"
+            />
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="delete-message-dialog-title"
+              data-testid="delete-message-dialog"
+              initial={{ opacity: 0, scale: 0.94 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.94 }}
+              transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative z-10 w-full max-w-[328px] rounded-[22px] bg-white dark:bg-[#1C1C1E] shadow-[0_16px_48px_rgba(0,0,0,0.22)] p-5 text-left"
+            >
+              <h3
+                id="delete-message-dialog-title"
+                className="text-[18px] font-semibold text-black dark:text-white tracking-tight"
+              >
+                {t('delete_message', 'Delete message')}
+              </h3>
+              <p className="text-[14px] text-[#8E8E93] mt-1.5 leading-snug">
+                {t(
+                  'delete_message_confirm_text',
+                  'Are you sure you want to delete this message?'
+                )}
+              </p>
+
+              {deleteDialogConfig.canDeleteForEveryone && deleteDialogConfig.alsoDeleteLabel && (
+                <label
+                  htmlFor="delete-for-everyone-checkbox"
+                  className="mt-4 flex items-center gap-3 py-1 cursor-pointer select-none"
+                >
+                  <input
+                    id="delete-for-everyone-checkbox"
+                    type="checkbox"
+                    checked={deleteForEveryoneChecked}
+                    onChange={(e) => setDeleteForEveryoneChecked(e.target.checked)}
+                    className="sr-only"
+                  />
+                  <span
+                    aria-hidden="true"
+                    className={`w-5 h-5 rounded-[6px] flex items-center justify-center shrink-0 transition-colors ${
+                      deleteForEveryoneChecked
+                        ? 'bg-[#007AFF] text-white'
+                        : 'border-[1.75px] border-[#C7C7CC] dark:border-[#48484A] bg-transparent'
+                    }`}
+                  >
+                    {deleteForEveryoneChecked && <Check className="w-3.5 h-3.5 stroke-[2.8]" />}
+                  </span>
+                  <span className="text-[14px] font-medium text-black dark:text-white leading-snug">
+                    {deleteDialogConfig.alsoDeleteLabel}
+                  </span>
+                </label>
+              )}
+
+              <div className="mt-5 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={closeDeleteDialog}
+                  disabled={isDeletingMessage}
+                  className="px-3.5 py-2 rounded-xl text-[15px] font-medium text-[#007AFF] hover:bg-[#007AFF]/8 active:bg-[#007AFF]/12 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {t('cancel', 'Cancel')}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDeleteMessage}
+                  disabled={isDeletingMessage}
+                  className="px-3.5 py-2 rounded-xl text-[15px] font-semibold text-[#FF3B30] hover:bg-[#FF3B30]/10 active:bg-[#FF3B30]/15 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {isDeletingMessage ? t('deleting', 'Deleting...') : t('delete', 'Delete')}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* ==================== PARTNER PROFILE MODAL ==================== */}
       <AnimatePresence>
@@ -2000,15 +2998,17 @@ export const MessagesHubView: React.FC<MessagesHubViewProps> = ({
                 avatar: target.avatar || fullCreator?.avatar || '',
                 isVerified: target.isVerified ?? fullCreator?.isVerified,
                 isPremium: Boolean(target.isVerified ?? fullCreator?.isVerified),
-                bio: (target as any).bio || fullCreator?.bio || 'Webtoon creator and avid story reader.',
-                followersCount: (target as any).followersCount ?? fullCreator?.followersCount ?? 14200,
-                followingCount: (target as any).followingCount ?? fullCreator?.followingCount ?? 395,
-                postsCount: (target as any).postsCount ?? fullCreator?.postsCount ?? 6,
-                likesCount: (target as any).likesCount ?? fullCreator?.likesCount ?? 89400,
-                storiesReadCount: (target as any).storiesReadCount ?? fullCreator?.storiesReadCount ?? 184,
-                achievementsCount: (target as any).achievementsCount ?? fullCreator?.achievementsCount ?? 24,
+                bio: (target as any).bio ?? fullCreator?.bio,
+                followersCount: (target as any).followersCount ?? fullCreator?.followersCount ?? 0,
+                followingCount: (target as any).followingCount ?? fullCreator?.followingCount ?? 0,
+                postsCount: (target as any).postsCount ?? fullCreator?.postsCount ?? 0,
+                likesCount: (target as any).likesCount ?? fullCreator?.likesCount ?? 0,
+                storiesReadCount: (target as any).storiesReadCount ?? fullCreator?.storiesReadCount,
+                achievementsCount: (target as any).achievementsCount ?? fullCreator?.achievementsCount,
               };
             })()}
+            creators={creators}
+            onOpenUserProfile={onOpenUserProfile}
             isFollowing={
               onToggleFollow
                 ? (currentUser.followingIds || []).includes(

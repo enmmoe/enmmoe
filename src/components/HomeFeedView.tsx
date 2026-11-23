@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
-  Activity,
   BookOpen,
   ChevronRight,
   Heart,
   Star,
 } from 'lucide-react';
-import { User } from '../types';
+import { Story, User } from '../types';
+import { StoryAuthorGroup } from '../utils/storyMedia';
 import {
   CONTINUE_READING_ITEMS,
   FEATURED_WEBTOONS,
@@ -23,10 +23,19 @@ import {
   computeDisplaySeriesRating,
   getBookReadingProgress,
   getSeriesUserRating,
-  saveBookReadingProgress,
+  prepareSeriesReadNow,
 } from './WebtoonReaderModal';
 import { useLanguage } from '../utils/i18n';
-import { safeStorage } from '../utils/storage';
+import {
+  isWebtoonLiked,
+  isWebtoonSubscribed,
+  loadLikedWebtoons,
+  loadSubscribedWebtoons,
+  saveLikedWebtoons,
+  saveSubscribedWebtoons,
+  toggleWebtoonLike,
+  toggleWebtoonSubscription,
+} from '../utils/webtoonInteractions';
 import {
   EmptyState,
   HomeFeedSkeleton,
@@ -37,17 +46,22 @@ import {
 
 export interface HomeFeedViewProps {
   currentUser: User;
+  stories?: Story[];
   onToggleTheme?: () => void;
   onOpenWebtoon?: (webtoon: WebtoonItem) => void;
   onOpenBook?: (bookId: string, initialEpisodeNumber?: number) => void;
   onOpenChapter?: (chapterId: string, bookId?: string, episodeNumber?: number) => void;
   onOpenUserProfile?: (user: { id: string; name: string; username: string; avatar: string; isVerified?: boolean }) => void;
   onOpenCreate?: () => void;
+  onOpenCreateStory?: () => void;
+  onOpenAuthorStory?: (authorId: string, group?: StoryAuthorGroup) => void;
   onOpenPulse?: () => void;
   onOpenNotifications?: () => void;
   unreadNotificationsCount?: number;
   subscribedWebtoons?: Record<string, boolean>;
   onToggleSubscribe?: (webtoonId: string) => void;
+  likedWebtoons?: Record<string, boolean>;
+  onToggleLike?: (webtoonId: string) => void;
   isActive?: boolean;
 }
 
@@ -84,19 +98,19 @@ const HomePosterCard: React.FC<HomePosterCardProps> = ({
       onClick={onClick}
       className="group w-full text-left flex flex-col bg-transparent border-0 p-0 cursor-pointer ios-press focus-visible:outline-none"
     >
-      <div className="relative w-full aspect-[2/3] rounded-[14px] overflow-hidden bg-[#F2F2F7] dark:bg-[#1C1C1E] mb-2.5">
+      <div className="relative w-full aspect-[3/4] rounded-[14px] overflow-hidden bg-[#F2F2F7] dark:bg-[#1C1C1E] mb-2.5">
         <SmartImage
           src={item.coverImage}
           alt={item.title}
           loading={priorityLoad ? 'eager' : 'lazy'}
           aspectClassName="w-full h-full"
-          className="object-cover object-[center_18%] transition-transform duration-500 ease-out group-hover:scale-[1.03]"
+          className="object-cover object-[center_14%] transition-transform duration-500 ease-out group-hover:scale-[1.03]"
           fallbackText={item.title}
         />
 
         {typeof rank === 'number' && (
           <>
-            <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/75 via-black/25 to-transparent pointer-events-none" />
+            <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/80 via-black/30 to-transparent pointer-events-none" />
             <span className="absolute bottom-2.5 left-3 text-[28px] font-bold leading-none tracking-tight text-white tabular-nums drop-shadow-sm">
               {rank}
             </span>
@@ -104,7 +118,7 @@ const HomePosterCard: React.FC<HomePosterCardProps> = ({
         )}
 
         {typeof progressPercent === 'number' && progressPercent > 0 && (
-          <div className="absolute inset-x-0 bottom-0 h-1 bg-white/30 pointer-events-none">
+          <div className="absolute inset-x-0 bottom-0 h-[3px] bg-white/30 pointer-events-none">
             <div
               className="h-full bg-[#007AFF] transition-all duration-300"
               style={{ width: `${Math.min(100, Math.max(4, progressPercent))}%` }}
@@ -119,7 +133,7 @@ const HomePosterCard: React.FC<HomePosterCardProps> = ({
         </span>
       )}
 
-      <h3 className="text-[15px] font-semibold text-black dark:text-white truncate w-full leading-snug group-hover:text-[#007AFF] transition-colors">
+      <h3 className="text-[15px] font-semibold text-black dark:text-white line-clamp-1 w-full leading-snug group-hover:text-[#007AFF] transition-colors">
         {item.title}
       </h3>
 
@@ -151,6 +165,7 @@ interface FeaturedPosterSlideProps {
   index: number;
   isSubscribed: boolean;
   readsLabel: string;
+  readNowLabel: string;
   subscribedLabel: string;
   subscribeLabel: string;
   onOpenSeries: (item: WebtoonItem) => void;
@@ -163,6 +178,7 @@ const FeaturedPosterSlide: React.FC<FeaturedPosterSlideProps> = ({
   index,
   isSubscribed,
   readsLabel,
+  readNowLabel,
   subscribedLabel,
   subscribeLabel,
   onOpenSeries,
@@ -178,25 +194,53 @@ const FeaturedPosterSlide: React.FC<FeaturedPosterSlideProps> = ({
     e.stopPropagation();
   };
 
+  const hasDistinctBanner = Boolean(item.bannerImage && item.bannerImage !== item.coverImage);
+
   return (
-    <div
-      onClick={() => onOpenSeries(item)}
-      className="relative w-full shrink-0 snap-center overflow-hidden aspect-[3/4] sm:aspect-[16/9] max-h-[480px] bg-black cursor-pointer group"
-    >
-      <SmartImage
-        src={item.bannerImage || item.coverImage}
-        alt={item.title}
-        loading="eager"
-        aspectClassName="w-full h-full"
-        className="object-cover object-[center_18%] transition-transform duration-700 ease-out group-hover:scale-[1.02]"
-        fallbackText={item.title}
-      />
+    <div className="relative w-full shrink-0 snap-center overflow-hidden aspect-[3/4] sm:aspect-[16/9] max-h-[480px] bg-black group">
+      {hasDistinctBanner ? (
+        <>
+          <SmartImage
+            src={item.coverImage}
+            alt={item.title}
+            loading="eager"
+            aspectClassName="w-full h-full sm:hidden"
+            className="object-cover object-[center_14%] transition-transform duration-700 ease-out group-hover:scale-[1.02]"
+            fallbackText={item.title}
+          />
+          <SmartImage
+            src={item.bannerImage!}
+            alt={item.title}
+            loading="eager"
+            aspectClassName="hidden sm:block w-full h-full"
+            className="object-cover object-[center_20%] transition-transform duration-700 ease-out group-hover:scale-[1.02]"
+            fallbackText={item.title}
+          />
+        </>
+      ) : (
+        <SmartImage
+          src={item.coverImage}
+          alt={item.title}
+          loading="eager"
+          aspectClassName="w-full h-full"
+          className="object-cover object-[center_14%] transition-transform duration-700 ease-out group-hover:scale-[1.02]"
+          fallbackText={item.title}
+        />
+      )}
 
       {/* Subtle lower scrim for clean text legibility */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/92 via-black/40 via-45% to-transparent pointer-events-none" />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/92 via-black/42 via-45% to-transparent pointer-events-none" />
 
-      {/* Spotlight Content */}
-      <div className="absolute bottom-0 inset-x-0 p-5 sm:p-7 text-white">
+      {/* Sibling full-bleed hit target for opening Series Details without nesting interactive buttons */}
+      <button
+        type="button"
+        aria-label={`Open ${item.title}`}
+        onClick={() => onOpenSeries(item)}
+        className="absolute inset-0 z-10 bg-transparent border-0 p-0 cursor-pointer focus-visible:outline-none"
+      />
+
+      {/* Spotlight Metadata & Action Controls */}
+      <div className="absolute bottom-0 inset-x-0 z-20 p-5 sm:p-7 text-white pointer-events-none">
         <p className="text-[13px] font-medium text-white/80">
           {item.genre}
         </p>
@@ -224,14 +268,11 @@ const FeaturedPosterSlide: React.FC<FeaturedPosterSlideProps> = ({
         </div>
 
         <div
-          className="relative z-10 grid grid-cols-2 gap-2.5 mt-4 max-w-sm"
+          className="relative z-30 pointer-events-auto grid grid-cols-2 gap-2.5 mt-4 max-w-sm"
           onClick={stopCarouselPointer}
-          onPointerDown={stopCarouselPointer}
-          onPointerMove={stopCarouselPointer}
-          onPointerUp={stopCarouselPointer}
-          onTouchStart={stopCarouselPointer}
-          onTouchMove={stopCarouselPointer}
-          onTouchEnd={stopCarouselPointer}
+          onPointerDown={(e) => {
+            if (e.pointerType === 'mouse') stopCarouselPointer(e);
+          }}
         >
           <button
             id={`hero-read-now-btn-${index}`}
@@ -239,7 +280,7 @@ const FeaturedPosterSlide: React.FC<FeaturedPosterSlideProps> = ({
             onClick={(e) => onReadNow(item, e)}
             className="h-[44px] px-4 rounded-[13px] bg-[#007AFF] hover:bg-[#0066D6] text-white text-[15px] font-semibold inline-flex items-center justify-center ios-press cursor-pointer whitespace-nowrap touch-manipulation"
           >
-            Read Now
+            {readNowLabel}
           </button>
 
           <button
@@ -263,13 +304,19 @@ const FeaturedPosterSlide: React.FC<FeaturedPosterSlideProps> = ({
 
 export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
   currentUser,
+  stories = [],
   onOpenWebtoon,
   onOpenBook,
   onOpenChapter,
+  onOpenCreate,
+  onOpenCreateStory,
+  onOpenAuthorStory,
   onOpenPulse,
   onOpenNotifications,
   subscribedWebtoons: externalSubscribed,
   onToggleSubscribe: externalToggleSubscribe,
+  likedWebtoons: externalLiked,
+  onToggleLike: externalToggleLike,
   isActive = true,
 }) => {
   const { t } = useLanguage();
@@ -289,24 +336,30 @@ export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
     scrollLeft: number;
     dragged: boolean;
   }>({ isDown: false, startX: 0, scrollLeft: 0, dragged: false });
-  const [localSubscribed, setLocalSubscribed] = useState<Record<string, boolean>>(() =>
-    safeStorage.getJSON<Record<string, boolean>>('enmmoe_subscribed_webtoons_v1', {
-      'otherworldly-family-man': true,
-      'down-to-earth': true,
-      'father-i-dont-want-marriage': true,
-    })
+  const [localSubscribed, setLocalSubscribed] = useState<Record<string, boolean>>(
+    loadSubscribedWebtoons
+  );
+  const [localLiked, setLocalLiked] = useState<Record<string, boolean>>(
+    loadLikedWebtoons
   );
   const [activeScheduleTab, setActiveScheduleTab] = useState<string>('POPULAR');
   const [isInitialLoading, setIsInitialLoading] = useState(true);
 
   const subscribedIds = externalSubscribed || localSubscribed;
+  const likedIds = externalLiked || localLiked;
   const featuredSlides = useMemo(() => FEATURED_WEBTOONS.slice(0, 3), []);
 
   useEffect(() => {
     if (!externalSubscribed) {
-      safeStorage.setJSON('enmmoe_subscribed_webtoons_v1', localSubscribed);
+      saveSubscribedWebtoons(localSubscribed);
     }
   }, [externalSubscribed, localSubscribed]);
+
+  useEffect(() => {
+    if (!externalLiked) {
+      saveLikedWebtoons(localLiked);
+    }
+  }, [externalLiked, localLiked]);
 
   useEffect(() => {
     activeBannerIdxRef.current = activeBannerIdx;
@@ -351,24 +404,7 @@ export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
 
   const handleReadNow = (item: WebtoonItem, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    const canonicalItem = resolveWebtoonById(item.id) || item;
-    const saved = getBookReadingProgress(canonicalItem.id);
-    const targetEp =
-      (saved &&
-        canonicalItem.episodes.find(
-          (ep) => ep.id === saved.episodeId || ep.number === saved.episodeNumber
-        )) ||
-      canonicalItem.episodes[0];
-
-    if (targetEp && !saved) {
-      saveBookReadingProgress(canonicalItem.id, {
-        episodeId: targetEp.id,
-        episodeNumber: targetEp.number,
-        scrollTop: 0,
-        percent: 0,
-        updatedAt: Date.now(),
-      });
-    }
+    const { canonical: canonicalItem, episode: targetEp } = prepareSeriesReadNow(item);
 
     if (onOpenChapter && targetEp) {
       onOpenChapter(targetEp.id, canonicalItem.id, targetEp.number);
@@ -411,21 +447,34 @@ export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
   const handleToggleSubscribe = (id: string, title?: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     const canonicalId = getCanonicalWebtoonId(id);
-    const defaultSub = Boolean(resolveWebtoonById(canonicalId)?.isSubscribed);
-    const nextState = !(subscribedIds[canonicalId] ?? defaultSub);
+    const nextState = !isWebtoonSubscribed(subscribedIds, canonicalId);
     if (externalToggleSubscribe) {
       externalToggleSubscribe(canonicalId);
     } else {
-      setLocalSubscribed((prev) => ({
-        ...prev,
-        [canonicalId]: nextState,
-      }));
+      setLocalSubscribed((prev) => toggleWebtoonSubscription(prev, canonicalId).nextMap);
     }
     showToast(
       nextState
         ? `${title ? `${title} · ` : ''}${t('subscribed', 'Subscribed')}`
-        : `${title ? `${title} · ` : ''}Removed from library`,
+        : `${title ? `${title} · ` : ''}Unsubscribed`,
       { type: 'success', durationMs: 2000 }
+    );
+  };
+
+  const handleToggleLike = (id: string, title?: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const canonicalId = getCanonicalWebtoonId(id);
+    const nextState = !isWebtoonLiked(likedIds, canonicalId);
+    if (externalToggleLike) {
+      externalToggleLike(canonicalId);
+    } else {
+      setLocalLiked((prev) => toggleWebtoonLike(prev, canonicalId).nextMap);
+    }
+    showToast(
+      nextState
+        ? `${title ? `${title} · ` : ''}${t('like', 'Liked')}`
+        : `${title ? `${title} · ` : ''}Removed from Likes`,
+      { type: 'success', durationMs: 1800 }
     );
   };
 
@@ -441,29 +490,20 @@ export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
   return (
     <div
       id="enmmoe-home-view"
-      className="w-full min-h-full bg-white dark:bg-black text-black dark:text-white pb-8 select-none"
+      className="w-full bg-white dark:bg-black text-black dark:text-white pb-10 select-none"
     >
-      {/* Minimal Borderless Home Header (Pulse — Centered Script Wordmark — Heart) */}
+      {/* Minimal Borderless Header (Balanced Spacer — Centered enmmoe Wordmark — Heart) */}
       <header
         id="home-top-bar"
         className="sticky top-0 z-30 bg-white dark:bg-black pt-safe"
       >
         <div className="h-[48px] px-4 grid grid-cols-[1fr_auto_1fr] items-center">
-          {/* Far Left: Existing Pulse Icon */}
-          <button
-            id="home-pulse-btn"
-            type="button"
-            onClick={onOpenPulse}
-            aria-label="Pulse"
-            className="justify-self-start min-w-[44px] min-h-[44px] -ml-2.5 flex items-center justify-center text-black dark:text-white bg-transparent border-0 p-0 cursor-pointer active:opacity-50 transition-opacity focus-visible:outline-none"
-          >
-            <Activity className="w-[22px] h-[22px] stroke-[1.8]" aria-hidden="true" />
-          </button>
+          <div className="justify-self-start w-11 h-11" aria-hidden="true" />
 
-          {/* True Horizontally Centered Script Wordmark */}
+          {/* Centered Modern Wordmark */}
           <h1
             aria-label="enmmoe"
-            className="enmmoe-wordmark justify-self-center text-[32px] sm:text-[34px] font-normal leading-none lowercase text-[#000000] dark:text-[#FFFFFF] select-none pointer-events-none translate-y-[1px]"
+            className="enmmoe-wordmark justify-self-center text-[25px] sm:text-[27px] font-bold leading-none lowercase text-[#000000] dark:text-[#FFFFFF] select-none pointer-events-none"
           >
             enmmoe
           </h1>
@@ -484,7 +524,8 @@ export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
       {isInitialLoading ? (
         <HomeFeedSkeleton />
       ) : (
-        <div className="space-y-8 pt-2">
+        <div className="space-y-6 pt-2">
+
           {/* Cinematic Edge-Aware Featured Series Carousel */}
           <section aria-label="Featured Series" className="px-4">
             <div
@@ -542,12 +583,16 @@ export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
                 dragStateRef.current.isDown = false;
                 dragStateRef.current.dragged = false;
               }}
-              className="w-full flex overflow-x-auto snap-x snap-mandatory no-scrollbar touch-pan-x rounded-[20px]"
+              style={{ touchAction: 'pan-x pan-y', overscrollBehaviorX: 'contain' }}
+              className="w-full flex overflow-x-auto snap-x snap-mandatory no-scrollbar rounded-[20px]"
             >
               {featuredSlides.map((item, idx) => {
                 const canonicalId = getCanonicalWebtoonId(item.id);
-                const isSlideSubscribed =
-                  subscribedIds[canonicalId] ?? Boolean(item.isSubscribed);
+                const isSlideSubscribed = isWebtoonSubscribed(
+                  subscribedIds,
+                  canonicalId,
+                  Boolean(item.isSubscribed)
+                );
                 return (
                   <FeaturedPosterSlide
                     key={item.id}
@@ -555,6 +600,7 @@ export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
                     index={idx}
                     isSubscribed={isSlideSubscribed}
                     readsLabel={t('reads', 'reads')}
+                    readNowLabel={t('read_now', 'Read Now')}
                     subscribedLabel={t('subscribed', 'Subscribed')}
                     subscribeLabel={t('subscribe', 'Subscribe')}
                     onOpenSeries={(series) => {
@@ -606,7 +652,10 @@ export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
               </span>
             </div>
 
-            <div className="px-4 flex items-start gap-3.5 overflow-x-auto no-scrollbar pb-1">
+            <div
+              style={{ touchAction: 'pan-x pan-y', overscrollBehaviorX: 'contain' }}
+              className="px-4 flex items-start gap-3.5 overflow-x-auto no-scrollbar pb-1"
+            >
               {CONTINUE_READING_ITEMS.map((item) => {
                 const canonicalId = getCanonicalWebtoonId(item.id);
                 const saved = getBookReadingProgress(canonicalId);
@@ -636,7 +685,10 @@ export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
               <span className="text-[13px] font-medium text-[#8E8E93]">Top 6</span>
             </div>
 
-            <div className="px-4 flex items-start gap-3.5 overflow-x-auto no-scrollbar pb-1">
+            <div
+              style={{ touchAction: 'pan-x pan-y', overscrollBehaviorX: 'contain' }}
+              className="px-4 flex items-start gap-3.5 overflow-x-auto no-scrollbar pb-1"
+            >
               {TRENDING_WEBTOONS.map((item, idx) => (
                 <div key={item.id} className="w-[146px] sm:w-[164px] shrink-0">
                   <HomePosterCard
@@ -660,7 +712,10 @@ export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
               </span>
             </div>
 
-            <div className="px-4 flex items-start gap-3.5 overflow-x-auto no-scrollbar pb-1">
+            <div
+              style={{ touchAction: 'pan-x pan-y', overscrollBehaviorX: 'contain' }}
+              className="px-4 flex items-start gap-3.5 overflow-x-auto no-scrollbar pb-1"
+            >
               {NEW_RELEASES_WEBTOONS.map((item) => (
                 <div key={item.id} className="w-[146px] sm:w-[164px] shrink-0">
                   <HomePosterCard
@@ -685,7 +740,10 @@ export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
               </span>
             </div>
 
-            <div className="px-4 flex items-start gap-3.5 overflow-x-auto no-scrollbar pb-1">
+            <div
+              style={{ touchAction: 'pan-x pan-y', overscrollBehaviorX: 'contain' }}
+              className="px-4 flex items-start gap-3.5 overflow-x-auto no-scrollbar pb-1"
+            >
               {RECOMMENDED_WEBTOONS.map((item) => (
                 <div key={item.id} className="w-[146px] sm:w-[164px] shrink-0">
                   <HomePosterCard
@@ -709,12 +767,15 @@ export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
                 onClick={() => setActiveScheduleTab('POPULAR')}
                 className="inline-flex items-center gap-0.5 text-[15px] font-medium text-[#007AFF] cursor-pointer"
               >
-                <span>All</span>
+                <span>{t('all_notifs', 'All')}</span>
                 <ChevronRight className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="px-4 flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-3.5">
+            <div
+              style={{ touchAction: 'pan-x pan-y', overscrollBehaviorX: 'contain' }}
+              className="px-4 flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-3.5"
+            >
               {scheduleTabs.map((tab) => {
                 const isActive = activeScheduleTab === tab;
                 const tabLabel =
@@ -775,7 +836,7 @@ export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
             {/* Clean Hairline Reading Queue Footer (No Heavy Container Box) */}
             {CONTINUE_READING_ITEMS.length > 0 && (
               <div className="px-4 mt-7">
-                <div className="pt-5 border-t border-black/[0.06] dark:border-white/[0.08] flex items-center justify-between gap-4">
+                <div className="pt-4 flex items-center justify-between gap-4">
                   <div className="min-w-0 flex-1">
                     <p className="text-[13px] font-medium text-[#8E8E93]">Reading Queue</p>
                     <p className="text-[15px] font-semibold text-black dark:text-white truncate mt-0.5">
@@ -788,7 +849,7 @@ export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
                     onClick={() => handleSelectWebtoon(CONTINUE_READING_ITEMS[0])}
                     className="h-9 px-4 rounded-xl bg-[#007AFF] hover:bg-[#0066D6] text-white text-[14px] font-semibold shrink-0 cursor-pointer ios-press whitespace-nowrap"
                   >
-                    Resume
+                    {t('continue', 'Resume')}
                   </button>
                 </div>
               </div>
@@ -804,12 +865,17 @@ export const HomeFeedView: React.FC<HomeFeedViewProps> = ({
           initialTab={readerOpenState.initialTab}
           initialEpisodeNumber={readerOpenState.episodeNumber}
           onClose={() => setReaderOpenState(null)}
-          isSubscribed={
-            subscribedIds[getCanonicalWebtoonId(readerOpenState.webtoon.id)] ??
+          isSubscribed={isWebtoonSubscribed(
+            subscribedIds,
+            readerOpenState.webtoon.id,
             Boolean(readerOpenState.webtoon.isSubscribed)
-          }
+          )}
+          isLiked={isWebtoonLiked(likedIds, readerOpenState.webtoon.id)}
           onToggleSubscribe={(id) =>
             handleToggleSubscribe(id, readerOpenState.webtoon.title)
+          }
+          onToggleLike={(id) =>
+            handleToggleLike(id, readerOpenState.webtoon.title)
           }
           theme={currentUser.theme === 'light' ? 'light' : 'dark'}
         />

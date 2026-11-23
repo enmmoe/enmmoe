@@ -1,8 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   User,
   SocialPost,
   Story,
+  StoryHighlight,
+  StoryAudience,
+  StoryReplyPermission,
   ShortVideo,
   SocialConversation,
   SocialMessage,
@@ -13,6 +16,7 @@ import {
   CURRENT_USER,
   INITIAL_CREATORS,
   INITIAL_STORIES,
+  INITIAL_HIGHLIGHTS,
   INITIAL_SOCIAL_POSTS,
   INITIAL_REELS,
   INITIAL_SOCIAL_CONVERSATIONS,
@@ -31,6 +35,7 @@ import { SettingsView } from './components/SettingsView';
 
 // Modals & Overlays
 import { StoryViewerModal } from './components/StoryViewerModal';
+import { StoryCreatorModal } from './components/StoryCreatorModal';
 import { CreateModal } from './components/CreateModal';
 import { CommentDrawer } from './components/CommentDrawer';
 import { NotificationsModal } from './components/NotificationsModal';
@@ -38,10 +43,16 @@ import { EditProfileModal } from './components/EditProfileModal';
 import { ReportModal } from './components/ReportModal';
 import { AuthModal } from './components/AuthModal';
 import { ForwardModal } from './components/ForwardModal';
-import { UserProfileScreen } from './components/UserProfileModal';
 import { WebtoonReaderModal } from './components/WebtoonReaderModal';
 import { EnmmoeIntro } from './components/EnmmoeIntro';
 import { OfflineBanner, ToastProvider, useToast } from './components/ui';
+import { socialApi } from './utils/socialSync';
+import { resolvePublicUser } from './utils/profileResolver';
+import {
+  StoryAuthorGroup,
+  groupStoriesByAuthor,
+  pruneExpiredStoryCaches,
+} from './utils/storyMedia';
 
 import { ENMMOE_AVATARS } from './data/enmmoeAvatars';
 import {
@@ -52,6 +63,19 @@ import {
 import { NavigationProvider, useNavigation } from './navigation/NavigationContext';
 import { AnimatePresence, motion } from 'motion/react';
 import { safeStorage } from './utils/storage';
+import {
+  isWebtoonLiked,
+  isWebtoonSubscribed,
+  loadLikedEpisodes,
+  loadLikedWebtoons,
+  loadSubscribedWebtoons,
+  saveLikedEpisodes,
+  saveLikedWebtoons,
+  saveSubscribedWebtoons,
+  toggleEpisodeLike,
+  toggleWebtoonLike,
+  toggleWebtoonSubscription,
+} from './utils/webtoonInteractions';
 
 const USER_STORAGE_KEY = 'enmmoe_social_user_v1';
 const LEGACY_USER_STORAGE_KEY = 'flirthubx_social_user_v3';
@@ -67,7 +91,6 @@ const CONVS_STORAGE_KEY = 'enmmoe_social_convs_v1';
 const LEGACY_CONVS_STORAGE_KEY = 'flirthubx_social_convs_v3';
 const NOTIFS_STORAGE_KEY = 'enmmoe_social_notifs_v1';
 const LEGACY_NOTIFS_STORAGE_KEY = 'flirthubx_social_notifs_v3';
-const SUBSCRIBED_WEBTOONS_KEY = 'enmmoe_subscribed_webtoons_v1';
 
 function loadWithLegacy<T>(primaryKey: string, legacyKey: string, fallback: T): T {
   const existing = safeStorage.getJSON<T | null>(primaryKey, null);
@@ -76,7 +99,7 @@ function loadWithLegacy<T>(primaryKey: string, legacyKey: string, fallback: T): 
 }
 
 function AppContent() {
-  useLanguage();
+  const { t, language, setLanguage } = useLanguage();
   const { showToast } = useToast();
   const {
     currentRoute,
@@ -101,7 +124,7 @@ function AppContent() {
   useEffect(() => {
     const handleOnline = () => {
       setIsOffline(false);
-      showToast('Back online', { type: 'success', durationMs: 2000 });
+      showToast(t('back_online', 'Back online'), { type: 'success', durationMs: 2000 });
     };
     const handleOffline = () => {
       setIsOffline(true);
@@ -112,15 +135,19 @@ function AppContent() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [showToast]);
+  }, [showToast, t]);
 
-  // Webtoon Subscriptions (persisted, keyed by canonical series ID)
-  const [subscribedWebtoons, setSubscribedWebtoons] = useState<Record<string, boolean>>(() =>
-    safeStorage.getJSON<Record<string, boolean>>(SUBSCRIBED_WEBTOONS_KEY, {
-      'otherworldly-family-man': true,
-      'down-to-earth': true,
-      'father-i-dont-want-marriage': true,
-    })
+  // Webtoon Subscriptions (persisted independently, keyed by canonical series ID)
+  const [subscribedWebtoons, setSubscribedWebtoons] = useState<Record<string, boolean>>(
+    loadSubscribedWebtoons
+  );
+
+  // Webtoon & Episode Likes (persisted independently, never coupled to subscriptions)
+  const [likedWebtoons, setLikedWebtoons] = useState<Record<string, boolean>>(
+    loadLikedWebtoons
+  );
+  const [likedEpisodes, setLikedEpisodes] = useState<Record<string, boolean>>(
+    loadLikedEpisodes
   );
 
   const [discoverSearchTagTrigger, setDiscoverSearchTagTrigger] = useState<{
@@ -129,15 +156,15 @@ function AppContent() {
   } | null>(null);
 
   const handleToggleSubscribeWebtoon = (webtoonId: string) => {
-    const canonicalId = getCanonicalWebtoonId(webtoonId);
-    const defaultVal = Boolean(resolveWebtoonById(canonicalId)?.isSubscribed);
-    setSubscribedWebtoons((prev) => {
-      const currentVal = prev[canonicalId] ?? defaultVal;
-      return {
-        ...prev,
-        [canonicalId]: !currentVal,
-      };
-    });
+    setSubscribedWebtoons((prev) => toggleWebtoonSubscription(prev, webtoonId).nextMap);
+  };
+
+  const handleToggleLikeWebtoon = (webtoonId: string) => {
+    setLikedWebtoons((prev) => toggleWebtoonLike(prev, webtoonId).nextMap);
+  };
+
+  const handleToggleEpisodeLike = (episodeId: string) => {
+    setLikedEpisodes((prev) => toggleEpisodeLike(prev, episodeId).nextMap);
   };
 
   const handleSelectSeriesTag = (tag: string) => {
@@ -194,12 +221,44 @@ function AppContent() {
       LEGACY_NOTIFS_STORAGE_KEY,
       INITIAL_NOTIFICATIONS
     );
-    return Array.isArray(loaded)
-      ? loaded.map((n) =>
-          n.text === 'started following you.' ? { ...n, text: 'subscribed to you.' } : n
-        )
-      : INITIAL_NOTIFICATIONS;
+    const list = Array.isArray(loaded) ? loaded : INITIAL_NOTIFICATIONS;
+    const deduped = Array.from(new Map(list.map((n) => [n.id, n])).values());
+    return deduped.map((n) =>
+      n.text === 'started following you.' ? { ...n, text: 'subscribed to you.' } : n
+    );
   });
+
+  const [isNotifsMuted, setIsNotifsMuted] = useState<boolean>(
+    () => safeStorage.getItem('enmmoe_mute_notifs') === 'true'
+  );
+
+  useEffect(() => {
+    const syncMuteFlag = () => {
+      setIsNotifsMuted(safeStorage.getItem('enmmoe_mute_notifs') === 'true');
+    };
+    window.addEventListener('enmmoe:notif-prefs-changed', syncMuteFlag);
+    window.addEventListener('storage', syncMuteFlag);
+    return () => {
+      window.removeEventListener('enmmoe:notif-prefs-changed', syncMuteFlag);
+      window.removeEventListener('storage', syncMuteFlag);
+    };
+  }, []);
+
+  // Keep user's preferredLanguage silently synced with LanguageProvider (no notification on switch)
+  const restoredPrefLangRef = useRef(false);
+  useEffect(() => {
+    if (!restoredPrefLangRef.current) {
+      restoredPrefLangRef.current = true;
+      const storedLang = safeStorage.getItem('enmmoe_language');
+      if (!storedLang && user.preferredLanguage && user.preferredLanguage !== language) {
+        setLanguage(user.preferredLanguage as any);
+        return;
+      }
+    }
+    setUser((prev) =>
+      prev.preferredLanguage === language ? prev : { ...prev, preferredLanguage: language }
+    );
+  }, [language]);
 
   const [creators, setCreators] = useState<User[]>(INITIAL_CREATORS);
   const [activeConversationId, setActiveConversationId] = useState<string>('');
@@ -223,8 +282,16 @@ function AppContent() {
     profile: 0,
   });
 
-  // Modals & Drawers States
-  const [activeStoryIndex, setActiveStoryIndex] = useState<number | null>(null);
+  // Modals, Stories, Highlights & Real-Time State
+  const [archiveStories, setArchiveStories] = useState<Story[]>([]);
+  const [highlights, setHighlights] = useState<StoryHighlight[]>(INITIAL_HIGHLIGHTS);
+  const [activeStoryAuthorId, setActiveStoryAuthorId] = useState<string | null>(null);
+  const [activeStoryInitialSlide, setActiveStoryInitialSlide] = useState<number>(0);
+  const [activeHighlightPlayback, setActiveHighlightPlayback] = useState<{
+    highlight: StoryHighlight;
+    stories: Story[];
+  } | null>(null);
+  const [showStoryCreatorModal, setShowStoryCreatorModal] = useState(false);
   const [activeCommentPostId, setActiveCommentPostId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showNotificationsModal, setShowNotificationsModal] = useState(false);
@@ -232,9 +299,343 @@ function AppContent() {
   const [reportingTargetId, setReportingTargetId] = useState<string | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [messageToForward, setMessageToForward] = useState<SocialMessage | null>(null);
-  const [viewingProfileUser, setViewingProfileUser] = useState<
-    (Partial<User> & { id: string; name: string; username: string; avatar: string; isVerified?: boolean }) | null
-  >(null);
+  const [storyToShare, setStoryToShare] = useState<Story | null>(null);
+
+  const wsRef = useRef<WebSocket | null>(null);
+  const activeConvIdRef = useRef<string>('');
+  const userRef = useRef<User>(user);
+  const typingClearTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  useEffect(() => {
+    activeConvIdRef.current = activeConversationId;
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  const hydrateFromServer = useCallback(async (targetUserId: string) => {
+    try {
+      const data = await socialApi.bootstrap(targetUserId);
+      if (!data.success) return;
+
+      const onlineSet = new Set(data.onlineUserIds || []);
+      const currentAvatar = userRef.current.avatar;
+
+      setCreators((prev) =>
+        prev.map((c) => ({
+          ...c,
+          isOnline: onlineSet.has(c.id),
+        }))
+      );
+
+      if (Array.isArray(data.conversations)) {
+        setConversations(
+          data.conversations.map((conv) => ({
+            ...conv,
+            messages: (conv.messages || []).map((m) =>
+              m.senderId === targetUserId && !m.senderAvatar && currentAvatar
+                ? { ...m, senderAvatar: currentAvatar }
+                : m
+            ),
+          }))
+        );
+      }
+
+      if (Array.isArray(data.stories)) {
+        setStories(
+          data.stories.map((st) =>
+            st.authorId === targetUserId && !st.authorAvatar && currentAvatar
+              ? { ...st, authorAvatar: currentAvatar }
+              : st
+          )
+        );
+      }
+
+      if (Array.isArray(data.archiveStories)) {
+        setArchiveStories(
+          data.archiveStories.map((st) =>
+            st.authorId === targetUserId && !st.authorAvatar && currentAvatar
+              ? { ...st, authorAvatar: currentAvatar }
+              : st
+          )
+        );
+      }
+
+      if (Array.isArray(data.highlights)) {
+        setHighlights(data.highlights);
+      }
+    } catch {
+      // Offline or cold start: keep cached storage state seamlessly
+    }
+  }, []);
+
+  // Bootstrap social & real-time state on mount / user change
+  useEffect(() => {
+    pruneExpiredStoryCaches(stories.map((s) => s.id));
+    let cancelled = false;
+
+    (async () => {
+      try {
+        await socialApi.updatePrivacy(user.id, {
+          showActivityStatus: user.showActivityStatus !== false,
+          readReceiptsEnabled: user.readReceiptsEnabled !== false,
+          typingIndicatorsEnabled: user.typingIndicatorsEnabled !== false,
+          allowMessagesFrom: user.allowMessagesFrom || 'everyone',
+          storyDefaultAudience: user.storyDefaultAudience || 'everyone',
+          storyReplyPermission: user.storyReplyPermission || 'everyone',
+          saveStoriesToArchive: user.saveStoriesToArchive !== false,
+          closeFriendIds: user.closeFriendIds || [],
+          mutedStoryAuthorIds: user.mutedStoryAuthorIds || [],
+          blockedUserIds: user.blockedUserIds || [],
+          followingIds: user.followingIds || [],
+        });
+      } catch {}
+      if (!cancelled) {
+        await hydrateFromServer(user.id);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user.id, hydrateFromServer]);
+
+  // Persistent WebSocket Connection for Presence, Typing, Messages, Read Receipts & Live Stories
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let unmounted = false;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const sendIdentify = (ws: WebSocket) => {
+      if (ws.readyState !== WebSocket.OPEN) return;
+      const u = userRef.current;
+      ws.send(
+        JSON.stringify({
+          type: 'social:identify',
+          userId: u.id,
+          showActivityStatus: u.showActivityStatus !== false,
+          readReceiptsEnabled: u.readReceiptsEnabled !== false,
+          typingIndicatorsEnabled: u.typingIndicatorsEnabled !== false,
+        })
+      );
+    };
+
+    const connect = () => {
+      if (unmounted) return;
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const ws = new WebSocket(`${protocol}//${window.location.host}`);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        sendIdentify(ws);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(String(event.data || '{}'));
+          const me = userRef.current;
+
+          if (data.type === 'dm:presence' && Array.isArray(data.onlineUserIds)) {
+            const onlineSet = new Set<string>(data.onlineUserIds);
+            const blocked = new Set<string>(me.blockedUserIds || []);
+            setCreators((prev) =>
+              prev.map((c) => ({
+                ...c,
+                isOnline: !blocked.has(c.id) && onlineSet.has(c.id),
+              }))
+            );
+            setConversations((prev) =>
+              prev.map((c) => ({
+                ...c,
+                participants: (c.participants || []).map((p) => ({
+                  ...p,
+                  isOnline: !blocked.has(p.id) && onlineSet.has(p.id),
+                })),
+              }))
+            );
+            return;
+          }
+
+          if (data.type === 'dm:typing' && data.conversationId) {
+            if (data.userId === me.id) return;
+            if ((me.blockedUserIds || []).includes(data.userId)) return;
+            const convId = String(data.conversationId);
+            if (typingClearTimersRef.current[convId]) {
+              clearTimeout(typingClearTimersRef.current[convId]);
+            }
+            setConversations((prev) =>
+              prev.map((c) =>
+                c.id === convId
+                  ? {
+                      ...c,
+                      isTyping: Boolean(data.isTyping),
+                      typingUserId: data.isTyping ? data.userId : undefined,
+                      typingUserName: data.isTyping ? data.userName : undefined,
+                    }
+                  : c
+              )
+            );
+            if (data.isTyping) {
+              typingClearTimersRef.current[convId] = setTimeout(() => {
+                setConversations((prev) =>
+                  prev.map((c) =>
+                    c.id === convId && c.typingUserId === data.userId
+                      ? { ...c, isTyping: false, typingUserId: undefined, typingUserName: undefined }
+                      : c
+                  )
+                );
+              }, 5000);
+            }
+            return;
+          }
+
+          if (data.type === 'dm:message' && data.conversationId && data.message) {
+            const incomingMsg = data.message as SocialMessage;
+            const convId = String(data.conversationId);
+            const isViewingNow = activeConvIdRef.current === convId;
+            let foundConv = false;
+
+            setConversations((prev) =>
+              prev.map((c) => {
+                if (c.id !== convId) return c;
+                foundConv = true;
+                const existing = c.messages || [];
+                if (existing.some((m) => m.id === incomingMsg.id)) return c;
+                return {
+                  ...c,
+                  isTyping: false,
+                  typingUserId: undefined,
+                  typingUserName: undefined,
+                  unreadCount:
+                    incomingMsg.senderId !== me.id && !isViewingNow
+                      ? (c.unreadCount || 0) + 1
+                      : c.unreadCount || 0,
+                  lastMessage: incomingMsg,
+                  messages: [...existing, incomingMsg],
+                };
+              })
+            );
+
+            if (!foundConv) {
+              hydrateFromServer(me.id);
+            } else if (incomingMsg.senderId !== me.id && isViewingNow) {
+              socialApi.markConversationRead(convId, me.id).catch(() => {});
+            }
+            return;
+          }
+
+          if (data.type === 'dm:read' && data.conversationId) {
+            if (data.receiptVisible === false || me.readReceiptsEnabled === false) return;
+            const convId = String(data.conversationId);
+            const seenAt = Number(data.seenAt) || Date.now();
+            setConversations((prev) =>
+              prev.map((c) => {
+                if (c.id !== convId) return c;
+                return {
+                  ...c,
+                  messages: (c.messages || []).map((m) =>
+                    m.senderId === me.id && m.senderId !== data.readerId
+                      ? { ...m, status: 'read' as const, seenAt }
+                      : m
+                  ),
+                  lastMessage:
+                    c.lastMessage &&
+                    c.lastMessage.senderId === me.id &&
+                    c.lastMessage.senderId !== data.readerId
+                      ? { ...c.lastMessage, status: 'read' as const, seenAt }
+                      : c.lastMessage,
+                };
+              })
+            );
+            return;
+          }
+
+          if (data.type === 'dm:reaction' && data.conversationId && data.messageId) {
+            setConversations((prev) =>
+              prev.map((c) =>
+                c.id === data.conversationId
+                  ? {
+                      ...c,
+                      messages: (c.messages || []).map((m) =>
+                        m.id === data.messageId ? { ...m, reactions: data.reactions || {} } : m
+                      ),
+                    }
+                  : c
+              )
+            );
+            return;
+          }
+
+          if (data.type === 'dm:delete' && data.conversationId && data.messageId) {
+            const shouldRemoveForMe =
+              data.mode === 'unsend' ||
+              !data.deletedByUserId ||
+              data.deletedByUserId === me.id;
+            if (!shouldRemoveForMe) return;
+            setConversations((prev) =>
+              prev.map((c) => {
+                if (c.id !== data.conversationId) return c;
+                const filtered = (c.messages || []).filter((m) => m.id !== data.messageId);
+                return {
+                  ...c,
+                  messages: filtered,
+                  lastMessage: filtered[filtered.length - 1],
+                };
+              })
+            );
+            return;
+          }
+
+          if (
+            data.type === 'story:created' ||
+            data.type === 'story:updated' ||
+            data.type === 'story:deleted'
+          ) {
+            hydrateFromServer(me.id);
+          }
+        } catch {
+          // ignore malformed WS packet
+        }
+      };
+
+      ws.onclose = () => {
+        if (!unmounted) {
+          reconnectTimer = setTimeout(connect, 2500);
+        }
+      };
+    };
+
+    connect();
+
+    return () => {
+      unmounted = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      Object.values(typingClearTimersRef.current).forEach(clearTimeout);
+      if (wsRef.current) {
+        try {
+          wsRef.current.close();
+        } catch {}
+        wsRef.current = null;
+      }
+    };
+  }, [user.id, hydrateFromServer]);
+
+  // Re-identify WS when privacy flags toggle
+  useEffect(() => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(
+        JSON.stringify({
+          type: 'social:identify',
+          userId: user.id,
+          showActivityStatus: user.showActivityStatus !== false,
+          readReceiptsEnabled: user.readReceiptsEnabled !== false,
+          typingIndicatorsEnabled: user.typingIndicatorsEnabled !== false,
+        })
+      );
+    }
+  }, [user.id, user.showActivityStatus, user.readReceiptsEnabled, user.typingIndicatorsEnabled]);
 
   // Synchronize light / dark mode cleanly via Tailwind `.dark` class
   useEffect(() => {
@@ -260,9 +661,33 @@ function AppContent() {
   useEffect(() => safeStorage.setJSON(CONVS_STORAGE_KEY, conversations), [conversations]);
   useEffect(() => safeStorage.setJSON(NOTIFS_STORAGE_KEY, notifications), [notifications]);
   useEffect(
-    () => safeStorage.setJSON(SUBSCRIBED_WEBTOONS_KEY, subscribedWebtoons),
+    () => saveSubscribedWebtoons(subscribedWebtoons),
     [subscribedWebtoons]
   );
+  useEffect(() => saveLikedWebtoons(likedWebtoons), [likedWebtoons]);
+  useEffect(() => saveLikedEpisodes(likedEpisodes), [likedEpisodes]);
+
+  const handleUpdateUserAndSync = useCallback((updated: Partial<User>) => {
+    setUser((prev) => {
+      const next = { ...prev, ...updated };
+      socialApi
+        .updatePrivacy(next.id, {
+          showActivityStatus: next.showActivityStatus !== false,
+          readReceiptsEnabled: next.readReceiptsEnabled !== false,
+          typingIndicatorsEnabled: next.typingIndicatorsEnabled !== false,
+          allowMessagesFrom: next.allowMessagesFrom || 'everyone',
+          storyDefaultAudience: next.storyDefaultAudience || 'everyone',
+          storyReplyPermission: next.storyReplyPermission || 'everyone',
+          saveStoriesToArchive: next.saveStoriesToArchive !== false,
+          closeFriendIds: next.closeFriendIds || [],
+          mutedStoryAuthorIds: next.mutedStoryAuthorIds || [],
+          blockedUserIds: next.blockedUserIds || [],
+          followingIds: next.followingIds || [],
+        })
+        .catch(() => {});
+      return next;
+    });
+  }, []);
 
   // Optimistic Subscribe / Unsubscribe Creator with Offline Rollback
   const handleToggleFollow = (targetUserId: string) => {
@@ -271,7 +696,18 @@ function AppContent() {
     const optimisticFollowing = wasFollowing
       ? previousFollowing.filter((id) => id !== targetUserId)
       : [...previousFollowing, targetUserId];
-    const targetCreator = creators.find((c) => c.id === targetUserId);
+    const existingCreator = creators.find((c) => c.id === targetUserId);
+    const resolvedTarget =
+      existingCreator ||
+      resolvePublicUser({
+        userId: targetUserId,
+        currentUser: user,
+        creators,
+        posts,
+        stories,
+        conversations,
+        webtoons: ALL_WEBTOONS,
+      });
 
     // 1. Immediate optimistic UI update
     setUser((prev) => ({
@@ -280,8 +716,20 @@ function AppContent() {
       followingCount: optimisticFollowing.length,
     }));
 
-    setCreators((prev) =>
-      prev.map((c) => {
+    setCreators((prev) => {
+      const exists = prev.some((c) => c.id === targetUserId);
+      if (!exists) {
+        if (wasFollowing) return prev;
+        return [
+          ...prev,
+          {
+            ...resolvedTarget,
+            followersIds: Array.from(new Set([...(resolvedTarget.followersIds || []), user.id])),
+            followersCount: Math.max(1, (resolvedTarget.followersCount || 0) + 1),
+          },
+        ];
+      }
+      return prev.map((c) => {
         if (c.id !== targetUserId) return c;
         const currentIds = c.followersIds || [];
         const nextIds = wasFollowing
@@ -292,8 +740,8 @@ function AppContent() {
           followersIds: nextIds,
           followersCount: Math.max(0, c.followersCount + (wasFollowing ? -1 : 1)),
         };
-      })
-    );
+      });
+    });
 
     setPosts((prev) =>
       prev.map((p) =>
@@ -307,10 +755,11 @@ function AppContent() {
     );
 
     if (typeof navigator === 'undefined' || navigator.onLine) {
+      socialApi.updatePrivacy(user.id, { followingIds: optimisticFollowing }).catch(() => {});
       showToast(
         wasFollowing
-          ? `Unsubscribed from ${targetCreator?.name || 'creator'}`
-          : `Subscribed to ${targetCreator?.name || 'creator'}`,
+          ? `Unsubscribed from ${resolvedTarget.name || 'creator'}`
+          : `Subscribed to ${resolvedTarget.name || 'creator'}`,
         { type: 'success', durationMs: 1800 }
       );
     }
@@ -389,9 +838,17 @@ function AppContent() {
       prev.map((p) => {
         if (p.id !== postId) return p;
         const isReposted = !p.isReposted;
+        const existingReposters = p.repostedByIds || [];
+        const nextReposters = isReposted
+          ? Array.from(new Set([...existingReposters, user.id]))
+          : existingReposters.filter((id) => id !== user.id);
         return {
           ...p,
           isReposted,
+          repostedByIds: nextReposters,
+          repostsCount: isReposted
+            ? (p.repostsCount ?? 0) + 1
+            : Math.max(0, (p.repostsCount ?? 0) - 1),
           sharesCount: isReposted ? p.sharesCount + 1 : Math.max(0, p.sharesCount - 1),
         };
       })
@@ -561,38 +1018,374 @@ function AppContent() {
     };
     setPosts((prev) => [newPost, ...prev]);
     setUser((prev) => ({ ...prev, postsCount: prev.postsCount + 1 }));
-    openHome();
+    openPulse();
   };
 
-  const handlePublishStory = (newStoryData: Partial<Story>) => {
-    const newStory: Story = {
-      id: `story-${Date.now()}`,
-      authorId: user.id,
-      authorName: user.name,
-      authorUsername: user.username,
-      authorAvatar: user.avatar,
-      authorVerified: user.isVerified,
-      mediaUrl: newStoryData.mediaUrl || ALL_WEBTOONS[0].coverImage,
-      mediaType: newStoryData.mediaType || 'photo',
-      caption: newStoryData.caption,
-      location: newStoryData.location,
+  const storyGroups = useMemo(() => groupStoriesByAuthor(stories, user), [stories, user]);
+
+  const handleOpenStoryAtIndex = (flatIdx: number) => {
+    const targetStory = stories[flatIdx];
+    if (!targetStory) return;
+    const grp = storyGroups.find((g) => g.authorId === targetStory.authorId);
+    const slideIdx = grp ? Math.max(0, grp.stories.findIndex((s) => s.id === targetStory.id)) : 0;
+    setActiveHighlightPlayback(null);
+    setActiveStoryAuthorId(targetStory.authorId);
+    setActiveStoryInitialSlide(slideIdx);
+  };
+
+  const handleOpenAuthorStory = (authorId: string, _group?: StoryAuthorGroup) => {
+    setActiveHighlightPlayback(null);
+    setActiveStoryAuthorId(authorId);
+    setActiveStoryInitialSlide(0);
+  };
+
+  const handlePublishStory = async (newStoryData: Partial<Story> & { saveToArchive?: boolean }) => {
+    try {
+      const res = await socialApi.createStory({
+        ...newStoryData,
+        authorId: user.id,
+        authorName: user.name,
+        authorUsername: user.username,
+        authorAvatar: user.avatar,
+        authorVerified: user.isVerified,
+        saveToArchive: newStoryData.saveToArchive ?? (user.saveStoriesToArchive !== false),
+      });
+      if (res.story) {
+        const created = {
+          ...res.story,
+          authorAvatar: res.story.authorAvatar || user.avatar,
+        };
+        setStories((prev) => [created, ...prev.filter((s) => s.id !== created.id)]);
+        if (created.isArchived !== false) {
+          setArchiveStories((prev) => [created, ...prev.filter((s) => s.id !== created.id)]);
+        }
+      }
+    } catch {
+      const now = Date.now();
+      const fallbackStory: Story = {
+        id: `story-${now}`,
+        authorId: user.id,
+        authorName: user.name,
+        authorUsername: user.username,
+        authorAvatar: user.avatar,
+        authorVerified: user.isVerified,
+        mediaUrl: newStoryData.mediaUrl || ALL_WEBTOONS[0].coverImage,
+        thumbnailUrl: newStoryData.thumbnailUrl,
+        mediaType: newStoryData.mediaType || 'photo',
+        backgroundGradient: newStoryData.backgroundGradient,
+        cropTransform: newStoryData.cropTransform,
+        drawingDataUrl: newStoryData.drawingDataUrl,
+        textOverlays: newStoryData.textOverlays,
+        stickers: newStoryData.stickers,
+        caption: newStoryData.caption,
+        location: newStoryData.location,
+        poll: newStoryData.poll,
+        createdAt: now,
+        expiresAt: now + 24 * 3600 * 1000,
+        canEditUntil: now + 15 * 60 * 1000,
+        audience: newStoryData.audience || user.storyDefaultAudience || 'everyone',
+        hiddenFromIds: newStoryData.hiddenFromIds || [],
+        replyPermission: newStoryData.replyPermission || user.storyReplyPermission || 'everyone',
+        viewers: [],
+        viewsCount: 0,
+        likesCount: 0,
+        likedByIds: [],
+        reactions: [],
+        isArchived: newStoryData.saveToArchive ?? (user.saveStoriesToArchive !== false),
+        isSeen: false,
+      };
+      setStories((prev) => [fallbackStory, ...prev]);
+      if (fallbackStory.isArchived !== false) {
+        setArchiveStories((prev) => [fallbackStory, ...prev]);
+      }
+    }
+  };
+
+  const handleViewStory = (storyId: string) => {
+    setStories((prev) =>
+      prev.map((s) => (s.id === storyId ? { ...s, isSeen: true } : s))
+    );
+    socialApi
+      .viewStory(storyId, {
+        userId: user.id,
+        name: user.name,
+        username: user.username,
+        avatar: user.avatar,
+      })
+      .then((res) => {
+        if (res.story) {
+          setStories((prev) => prev.map((s) => (s.id === storyId ? { ...s, ...res.story, isSeen: true } : s)));
+        }
+      })
+      .catch(() => {});
+  };
+
+  const handleLikeStory = (storyId: string) => {
+    const toggle = (list: Story[]) =>
+      list.map((s) => {
+        if (s.id !== storyId) return s;
+        const likedBy = s.likedByIds || [];
+        const hasLiked = likedBy.includes(user.id);
+        const nextLikedBy = hasLiked ? likedBy.filter((id) => id !== user.id) : [...likedBy, user.id];
+        return {
+          ...s,
+          likedByIds: nextLikedBy,
+          likesCount: Math.max(0, (s.likesCount ?? likedBy.length) + (hasLiked ? -1 : 1)),
+        };
+      });
+    setStories(toggle);
+    setArchiveStories(toggle);
+    socialApi
+      .likeStory(storyId, {
+        userId: user.id,
+        name: user.name,
+        username: user.username,
+        avatar: user.avatar,
+      })
+      .catch(() => {});
+  };
+
+  const handleReactStory = (storyId: string, emoji: string) => {
+    const apply = (list: Story[]) =>
+      list.map((s) => {
+        if (s.id !== storyId) return s;
+        const filtered = (s.reactions || []).filter((r) => r.userId !== user.id);
+        return {
+          ...s,
+          reactions: [...filtered, { userId: user.id, emoji }],
+          isSeen: true,
+        };
+      });
+    setStories(apply);
+    setArchiveStories(apply);
+    socialApi
+      .reactStory(storyId, {
+        userId: user.id,
+        emoji,
+        name: user.name,
+        username: user.username,
+        avatar: user.avatar,
+      })
+      .catch(() => {});
+  };
+
+  const handleVoteStoryPoll = (storyId: string, option: 'A' | 'B') => {
+    const applyVote = (list: Story[]) =>
+      list.map((s) => {
+        if (s.id !== storyId || !s.poll) return s;
+        const prevVote = s.poll.userVote ?? s.poll.voterVotes?.[user.id];
+        let votesA = s.poll.votesA ?? 0;
+        let votesB = s.poll.votesB ?? 0;
+        if (prevVote === 'A') votesA = Math.max(0, votesA - 1);
+        if (prevVote === 'B') votesB = Math.max(0, votesB - 1);
+        if (option === 'A') votesA += 1;
+        else votesB += 1;
+        return {
+          ...s,
+          poll: {
+            ...s.poll,
+            votesA,
+            votesB,
+            userVote: option,
+            voterVotes: { ...(s.poll.voterVotes || {}), [user.id]: option },
+          },
+        };
+      });
+    setStories(applyVote);
+    setArchiveStories(applyVote);
+    socialApi.voteStoryPoll(storyId, user.id, option).catch(() => {});
+  };
+
+  const handleAnswerStoryQuestion = (storyId: string, stickerId: string, answer: string) => {
+    const entry = {
+      id: `q-${Date.now()}`,
+      userId: user.id,
+      name: user.name,
+      username: user.username,
+      avatar: user.avatar,
+      answer,
       createdAt: Date.now(),
-      expiresAt: Date.now() + 24 * 3600 * 1000,
-      isSeen: false,
     };
-    setStories((prev) => [newStory, ...prev]);
-    openHome();
+    const apply = (list: Story[]) =>
+      list.map((s) =>
+        s.id === storyId
+          ? {
+              ...s,
+              stickers: (s.stickers || []).map((st) =>
+                st.id === stickerId
+                  ? { ...st, responses: [entry, ...(st.responses || [])] }
+                  : st
+              ),
+            }
+          : s
+      );
+    setStories(apply);
+    setArchiveStories(apply);
+    socialApi
+      .answerStoryQuestion(storyId, {
+        stickerId,
+        userId: user.id,
+        name: user.name,
+        username: user.username,
+        avatar: user.avatar,
+        answer,
+      })
+      .catch(() => {});
   };
 
-  // Send Direct Social Message
-  const handleSendMessage = (convId: string, text: string, replyTo?: any) => {
+  const handleInteractStorySticker = (
+    storyId: string,
+    payload: { stickerId: string; sliderValue?: number; toggleReminder?: boolean }
+  ) => {
+    const apply = (list: Story[]) =>
+      list.map((s) =>
+        s.id === storyId
+          ? {
+              ...s,
+              stickers: (s.stickers || []).map((st) => {
+                if (st.id !== payload.stickerId) return st;
+                const next = { ...st };
+                if (typeof payload.sliderValue === 'number') {
+                  next.sliderValues = { ...(st.sliderValues || {}), [user.id]: payload.sliderValue };
+                }
+                if (payload.toggleReminder) {
+                  const cur = st.reminderUserIds || [];
+                  next.reminderUserIds = cur.includes(user.id)
+                    ? cur.filter((id) => id !== user.id)
+                    : [...cur, user.id];
+                }
+                return next;
+              }),
+            }
+          : s
+      );
+    setStories(apply);
+    setArchiveStories(apply);
+    socialApi
+      .interactStorySticker(storyId, { userId: user.id, ...payload })
+      .catch(() => {});
+  };
+
+  const handleUpdateStoryMetadata = async (
+    storyId: string,
+    updates: {
+      caption?: string;
+      location?: string;
+      audience?: StoryAudience;
+      hiddenFromIds?: string[];
+      replyPermission?: StoryReplyPermission;
+    }
+  ) => {
+    const apply = (list: Story[]) =>
+      list.map((s) => (s.id === storyId ? { ...s, ...updates } : s));
+    setStories(apply);
+    setArchiveStories(apply);
+    try {
+      await socialApi.updateStory(storyId, { userId: user.id, ...updates });
+    } catch {}
+  };
+
+  const handleDeleteStory = async (storyId: string) => {
+    setStories((prev) => prev.filter((s) => s.id !== storyId));
+    setArchiveStories((prev) => prev.filter((s) => s.id !== storyId));
+    try {
+      await socialApi.deleteStory(storyId, user.id);
+    } catch {}
+  };
+
+  const handleMuteStoryAuthor = (authorId: string) => {
+    const current = user.mutedStoryAuthorIds || [];
+    const next = current.includes(authorId)
+      ? current.filter((id) => id !== authorId)
+      : [...current, authorId];
+    handleUpdateUserAndSync({ mutedStoryAuthorIds: next });
+  };
+
+  const handleReportStory = async (storyId: string, reason: string) => {
+    setStories((prev) => prev.filter((s) => s.id !== storyId));
+    try {
+      await socialApi.submitReport({
+        reporterId: user.id,
+        targetType: 'story',
+        targetId: storyId,
+        reason,
+      });
+    } catch {}
+  };
+
+  const handleSaveHighlight = async (payload: {
+    id?: string;
+    title: string;
+    coverImage: string;
+    storyIds: string[];
+  }) => {
+    if (payload.id) {
+      setHighlights((prev) =>
+        prev.map((h) =>
+          h.id === payload.id
+            ? { ...h, title: payload.title, coverImage: payload.coverImage, storyIds: payload.storyIds }
+            : h
+        )
+      );
+      try {
+        await socialApi.updateHighlight(payload.id, {
+          ownerId: user.id,
+          title: payload.title,
+          coverImage: payload.coverImage,
+          storyIds: payload.storyIds,
+        });
+      } catch {}
+      showToast('Highlight updated', { type: 'success' });
+      return;
+    }
+
+    try {
+      const res = await socialApi.createHighlight({
+        ownerId: user.id,
+        title: payload.title,
+        coverImage: payload.coverImage,
+        storyIds: payload.storyIds,
+      });
+      if (res.highlight) {
+        setHighlights((prev) => [res.highlight, ...prev]);
+      }
+    } catch {
+      const localHl: StoryHighlight = {
+        id: `hl-${Date.now()}`,
+        ownerId: user.id,
+        title: payload.title,
+        coverImage: payload.coverImage,
+        storyIds: payload.storyIds,
+        createdAt: Date.now(),
+      };
+      setHighlights((prev) => [localHl, ...prev]);
+    }
+    showToast('Highlight created', { type: 'success' });
+  };
+
+  const handleDeleteHighlight = async (highlightId: string) => {
+    setHighlights((prev) => prev.filter((h) => h.id !== highlightId));
+    try {
+      await socialApi.deleteHighlight(highlightId, user.id);
+    } catch {}
+    showToast('Highlight deleted', { type: 'info' });
+  };
+
+  // Real Server-Backed Direct Messaging (Zero Fake Timeouts)
+  const handleSendMessage = async (
+    convId: string,
+    text: string,
+    replyTo?: any,
+    storyReply?: SocialMessage['storyReply']
+  ) => {
     const currentBubbleStyle =
       safeStorage.getItem('enmmoe_bubble_style') ||
       safeStorage.getItem('tiktok_bubble_style') ||
       'default';
 
-    const newMessage: SocialMessage = {
-      id: `msg-${Date.now()}`,
+    const tempId = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const optimisticMessage: SocialMessage = {
+      id: tempId,
       conversationId: convId,
       senderId: user.id,
       senderName: user.name,
@@ -602,107 +1395,70 @@ function AppContent() {
       timestamp: Date.now(),
       status: 'sent',
       replyTo,
+      storyReply,
       bubbleStyle: currentBubbleStyle,
     };
 
     setConversations((prev) =>
       prev.map((c) =>
         c.id === convId
-          ? { ...c, lastMessage: newMessage, messages: [...(c.messages || []), newMessage] }
+          ? { ...c, lastMessage: optimisticMessage, messages: [...(c.messages || []), optimisticMessage] }
           : c
       )
     );
 
-    setTimeout(() => {
-      setConversations((prev) =>
-        prev.map((c) => {
-          if (c.id !== convId) return c;
-          const readTime = Date.now();
-          return {
-            ...c,
-            messages: (c.messages || []).map((m) =>
-              m.id === newMessage.id ? { ...m, status: 'read' as const, seenAt: readTime } : m
-            ),
-            lastMessage:
-              c.lastMessage?.id === newMessage.id
-                ? { ...c.lastMessage, status: 'read' as const, seenAt: readTime }
-                : c.lastMessage,
-          };
-        })
-      );
-    }, 1800);
-
-    setTimeout(() => {
-      setConversations((prev) =>
-        prev.map((c) => {
-          if (c.id !== convId) return c;
-          const partner = c.participants?.[0];
-          return {
-            ...c,
-            isTyping: true,
-            typingUserId: partner?.id || 'partner-default',
-            typingUserName: partner?.name || 'Contact',
-          };
-        })
-      );
-    }, 2600);
-
-    setTimeout(() => {
-      setConversations((prev) =>
-        prev.map((c) => {
-          if (c.id !== convId) return c;
-          const partner = c.participants?.[0] || INITIAL_CREATORS[0];
-          const possibleReplies = [
-            'Sounds great, thanks for letting me know!',
-            'Totally agree with you on that.',
-            'Just saw the latest episode — loved the art!',
-            'Got it, talk soon!',
-          ];
-          const partnerReply: SocialMessage = {
-            id: `msg-${Date.now()}`,
-            conversationId: convId,
-            senderId: partner.id,
-            senderName: partner.name,
-            senderUsername: partner.username,
-            senderAvatar: partner.avatar,
-            text: possibleReplies[Math.floor(Math.random() * possibleReplies.length)],
-            timestamp: Date.now(),
-            status: 'read',
-          };
-          return {
-            ...c,
-            isTyping: false,
-            typingUserId: undefined,
-            typingUserName: undefined,
-            lastMessage: partnerReply,
-            messages: [...(c.messages || []), partnerReply],
-          };
-        })
-      );
-    }, 5200);
+    try {
+      const res = await socialApi.sendMessage({
+        conversationId: convId,
+        senderId: user.id,
+        senderName: user.name,
+        senderUsername: user.username,
+        senderAvatar: user.avatar,
+        text,
+        replyTo,
+        storyReply,
+        bubbleStyle: currentBubbleStyle,
+      });
+      if (res.message) {
+        setConversations((prev) =>
+          prev.map((c) => {
+            if (c.id !== convId) return c;
+            const list = c.messages || [];
+            // Avoid duplicate if WS dm:message arrived before HTTP response
+            const alreadyHasServer = list.some((m) => m.id === res.message.id);
+            const nextList = alreadyHasServer
+              ? list.filter((m) => m.id !== tempId)
+              : list.map((m) => (m.id === tempId ? res.message : m));
+            return {
+              ...c,
+              messages: nextList,
+              lastMessage: nextList[nextList.length - 1],
+            };
+          })
+        );
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Could not send message', { type: 'error' });
+    }
   };
 
   const handleUserTyping = (convId: string, isTyping: boolean) => {
-    setConversations((prev) =>
-      prev.map((c) => {
-        if (c.id !== convId) return c;
-        if (isTyping) {
-          return { ...c, isTyping: true, typingUserId: user.id, typingUserName: user.name };
-        }
-        if (c.typingUserId === user.id) {
-          return {
-            ...c,
-            isTyping: false,
-            typingUserId: undefined,
-            typingUserName: undefined,
-          };
-        }
-        return c;
-      })
-    );
+    if (user.typingIndicatorsEnabled === false) return;
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(
+        JSON.stringify({
+          type: 'dm:typing',
+          conversationId: convId,
+          userId: user.id,
+          userName: user.name,
+          isTyping,
+        })
+      );
+    }
   };
 
-  // Mark active conversation read
+  // Mark active conversation read & broadcast real receipt via backend
   useEffect(() => {
     if (!activeConversationId) return;
     setConversations((prev) =>
@@ -725,6 +1481,7 @@ function AppContent() {
         };
       })
     );
+    socialApi.markConversationRead(activeConversationId, user.id).catch(() => {});
   }, [activeConversationId, user.id]);
 
   const handleReactMessage = (convId: string, messageId: string, emoji: string) => {
@@ -733,84 +1490,307 @@ function AppContent() {
         c.id === convId
           ? {
               ...c,
-              messages: (c.messages || []).map((m) =>
-                m.id === messageId
-                  ? { ...m, reactions: { ...(m.reactions || {}), [user.id]: emoji } }
-                  : m
-              ),
+              messages: (c.messages || []).map((m) => {
+                if (m.id !== messageId) return m;
+                const currentReactions = { ...(m.reactions || {}) };
+                if (currentReactions[user.id] === emoji) {
+                  delete currentReactions[user.id];
+                } else {
+                  currentReactions[user.id] = emoji;
+                }
+                return { ...m, reactions: currentReactions };
+              }),
             }
           : c
       )
     );
+    socialApi.reactMessage(convId, messageId, user.id, emoji).catch(() => {});
   };
 
-  const handleDeleteMessage = (convId: string, messageId: string) => {
-    setConversations((prev) =>
-      prev.map((c) =>
-        c.id === convId
-          ? { ...c, messages: (c.messages || []).filter((m) => m.id !== messageId) }
-          : c
-      )
-    );
+  const handleDeleteMessage = async (
+    convId: string,
+    messageId: string,
+    mode: 'unsend' | 'delete_for_me' = 'delete_for_me'
+  ): Promise<{ ok: boolean; deletedForEveryone: boolean; error?: string }> => {
+    const removeFromLocalState = () => {
+      setConversations((prev) =>
+        prev.map((c) => {
+          if (c.id !== convId) return c;
+          const remaining = (c.messages || []).filter((m) => m.id !== messageId);
+          return { ...c, messages: remaining, lastMessage: remaining[remaining.length - 1] };
+        })
+      );
+    };
+
+    try {
+      const res = await socialApi.deleteMessage(convId, messageId, user.id, mode);
+      const deletedForEveryone = mode === 'unsend' && res.deletedForEveryone === true;
+      if (mode === 'unsend' && !deletedForEveryone) {
+        return {
+          ok: false,
+          deletedForEveryone: false,
+          error: 'Could not delete this message for the other participant.',
+        };
+      }
+      removeFromLocalState();
+      return { ok: true, deletedForEveryone };
+    } catch (err: any) {
+      if (mode === 'delete_for_me') {
+        removeFromLocalState();
+        return { ok: true, deletedForEveryone: false };
+      }
+      return {
+        ok: false,
+        deletedForEveryone: false,
+        error: err?.message || 'Unable to delete this message for everyone.',
+      };
+    }
   };
 
-  const handleSendStoryReply = (authorId: string, replyText: string) => {
+  const handleRequestAction = async (
+    convId: string,
+    action: 'accept' | 'decline' | 'block' | 'spam'
+  ) => {
+    const targetConv = conversations.find((c) => c.id === convId);
+    const partnerId = targetConv?.participants?.[0]?.id;
+
+    if (action === 'accept') {
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === convId ? { ...c, isRequest: false, requestStatus: 'accepted', unreadCount: 0 } : c
+        )
+      );
+      showToast('Message request accepted', { type: 'success' });
+    } else if (action === 'decline') {
+      setConversations((prev) => prev.filter((c) => c.id !== convId));
+      if (activeConversationId === convId) setActiveConversationId('');
+      showToast('Request deleted', { type: 'info' });
+    } else if (action === 'spam') {
+      setConversations((prev) =>
+        prev.map((c) => (c.id === convId ? { ...c, requestStatus: 'spam' } : c))
+      );
+      if (activeConversationId === convId) setActiveConversationId('');
+      showToast('Moved to filtered requests', { type: 'info' });
+    } else if (action === 'block') {
+      if (partnerId) {
+        handleToggleBlockUser(partnerId, true);
+      }
+      setConversations((prev) => prev.filter((c) => c.id !== convId));
+      if (activeConversationId === convId) setActiveConversationId('');
+    }
+
+    socialApi.handleRequestAction(convId, user.id, action).catch(() => {});
+  };
+
+  const handleToggleBlockUser = (targetUserId: string, block: boolean) => {
+    const currentBlocked = user.blockedUserIds || [];
+    const nextBlocked = block
+      ? Array.from(new Set([...currentBlocked, targetUserId]))
+      : currentBlocked.filter((id) => id !== targetUserId);
+    handleUpdateUserAndSync({ blockedUserIds: nextBlocked });
+    socialApi.toggleBlockUser(user.id, targetUserId, block).catch(() => {});
+    if (block) {
+      setStories((prev) => prev.filter((s) => s.authorId !== targetUserId));
+    } else {
+      hydrateFromServer(user.id);
+    }
+  };
+
+  const handleReportTarget = (
+    targetType: 'conversation' | 'message' | 'account',
+    targetId: string,
+    reason: string
+  ) => {
+    socialApi
+      .submitReport({
+        reporterId: user.id,
+        targetType,
+        targetId,
+        reason,
+      })
+      .catch(() => {});
+  };
+
+  const handleSendStoryReply = async (story: Story, replyText: string) => {
+    const storyReplyPayload: SocialMessage['storyReply'] = {
+      storyId: story.id,
+      authorId: story.authorId,
+      authorName: story.authorName,
+      thumbnailUrl: story.thumbnailUrl || story.mediaUrl,
+      storyCaption: story.caption,
+    };
+
+    try {
+      const res = await socialApi.replyToStory(story.id, {
+        senderId: user.id,
+        senderName: user.name,
+        senderUsername: user.username,
+        senderAvatar: user.avatar,
+        replyText,
+      });
+      if (res.conversationId && res.message) {
+        const exists = conversations.some((c) => c.id === res.conversationId);
+        if (exists) {
+          setConversations((prev) =>
+            prev.map((c) => {
+              if (c.id !== res.conversationId) return c;
+              const list = c.messages || [];
+              if (list.some((m) => m.id === res.message.id)) return c;
+              return { ...c, lastMessage: res.message, messages: [...list, res.message] };
+            })
+          );
+        } else {
+          hydrateFromServer(user.id);
+        }
+        return;
+      }
+    } catch {}
+
     const targetConv = conversations.find((c) =>
-      (c.participants || []).some((p) => p.id === authorId)
+      (c.participants || []).some((p) => p.id === story.authorId)
     );
     if (targetConv) {
-      handleSendMessage(targetConv.id, replyText);
+      handleSendMessage(targetConv.id, replyText, undefined, storyReplyPayload);
       return;
     }
-    const creator = creators.find((c) => c.id === authorId);
+    const creator = creators.find((c) => c.id === story.authorId);
     const newConv: SocialConversation = {
       id: `conv-${Date.now()}`,
       type: 'direct',
       participants: [
         {
-          id: authorId,
-          name: creator?.name || 'Creator',
-          username: creator?.username || 'creator',
-          avatar: creator?.avatar || '',
-          isVerified: creator?.isVerified,
-          isOnline: true,
+          id: story.authorId,
+          name: story.authorName || creator?.name || 'Creator',
+          username: story.authorUsername || creator?.username || 'creator',
+          avatar: story.authorAvatar || creator?.avatar || '',
+          isVerified: story.authorVerified ?? creator?.isVerified,
+          isOnline: creator?.isOnline || false,
         },
       ],
       unreadCount: 0,
       messages: [],
     };
     setConversations((prev) => [newConv, ...prev]);
-    handleSendMessage(newConv.id, replyText);
+    handleSendMessage(newConv.id, replyText, undefined, storyReplyPayload);
   };
 
-  const handleStartConversationWithUser = (
+  const handleCreateGroupConversation = async (title: string, memberIds: string[]) => {
+    try {
+      const res = await socialApi.createOrGetConversation({
+        userId: user.id,
+        title,
+        participantIds: memberIds,
+      });
+      if (res.conversation) {
+        setConversations((prev) => [res.conversation, ...prev]);
+        setActiveConversationId(res.conversation.id);
+        openMessages(res.conversation.id);
+        showToast(`Created "${title}"`, { type: 'success' });
+        return;
+      }
+    } catch {}
+    const members = creators.filter((c) => memberIds.includes(c.id));
+    const newGroup: SocialConversation = {
+      id: `group-${Date.now()}`,
+      type: 'group',
+      title,
+      participants: members.map((m) => ({
+        id: m.id,
+        name: m.name,
+        username: m.username,
+        avatar: m.avatar,
+        isOnline: m.isOnline,
+      })),
+      unreadCount: 0,
+      messages: [],
+    };
+    setConversations((prev) => [newGroup, ...prev]);
+    setActiveConversationId(newGroup.id);
+    openMessages(newGroup.id);
+    showToast(`Created "${title}"`, { type: 'success' });
+  };
+
+  const handleStartConversationWithUser = async (
     targetUserId: string,
     targetUserData?: (Partial<User> & { id: string; name: string; username: string; avatar: string; isVerified?: boolean }) | null
   ) => {
+    if (!targetUserId || targetUserId === 'me' || targetUserId === user.id) {
+      return;
+    }
+
+    const resolvedTarget = resolvePublicUser({
+      userId: targetUserId,
+      partialUser: targetUserData,
+      currentUser: user,
+      creators,
+      posts,
+      stories,
+      conversations,
+      webtoons: ALL_WEBTOONS,
+    });
+
+    if ((user.blockedUserIds || []).includes(resolvedTarget.id)) {
+      showToast(`Unblock ${resolvedTarget.name} before sending a message`, { type: 'info' });
+      return;
+    }
+
+    if (resolvedTarget.allowMessagesFrom === 'nobody') {
+      showToast(`${resolvedTarget.name} does not accept direct messages`, { type: 'info' });
+      return;
+    }
+
     let conv = conversations.find((c) =>
-      (c.participants || []).some((p) => p.id === targetUserId || p.username === targetUserData?.username)
+      c.type === 'direct' &&
+      (c.participants || []).some(
+        (p) =>
+          p.id === resolvedTarget.id ||
+          (resolvedTarget.username && p.username === resolvedTarget.username)
+      )
     );
 
     if (!conv) {
-      const creator = creators.find((c) => c.id === targetUserId);
-      const newConv: SocialConversation = {
-        id: `conv-${Date.now()}`,
-        type: 'direct',
-        participants: [
-          {
-            id: targetUserId,
-            name: targetUserData?.name || creator?.name || 'Creator',
-            username: targetUserData?.username || creator?.username || 'creator',
-            avatar: targetUserData?.avatar || creator?.avatar || '',
-            isVerified: targetUserData?.isVerified ?? creator?.isVerified,
-            isOnline: true,
-          },
-        ],
-        unreadCount: 0,
-        messages: [],
+      const userData = {
+        id: resolvedTarget.id,
+        name: resolvedTarget.name,
+        username: resolvedTarget.username,
+        avatar: resolvedTarget.avatar,
+        isVerified: resolvedTarget.isVerified,
       };
-      setConversations((prev) => [newConv, ...prev]);
-      conv = newConv;
+      try {
+        const res = await socialApi.createOrGetConversation({
+          userId: user.id,
+          targetUserId: resolvedTarget.id,
+          targetUserData: userData,
+        });
+        if (res.conversation) {
+          conv = res.conversation;
+          setConversations((prev) =>
+            prev.some((c) => c.id === conv!.id) ? prev : [conv!, ...prev]
+          );
+        }
+      } catch (err: any) {
+        if (err?.message) {
+          showToast(err.message, { type: 'error' });
+          return;
+        }
+      }
+
+      if (!conv) {
+        const fallbackConv: SocialConversation = {
+          id: `conv-${Date.now()}`,
+          type: 'direct',
+          participants: [
+            {
+              ...userData,
+              isOnline: resolvedTarget.isOnline || false,
+            },
+          ],
+          unreadCount: 0,
+          messages: [],
+        };
+        setConversations((prev) => [fallbackConv, ...prev]);
+        conv = fallbackConv;
+      }
     }
 
     setActiveConversationId(conv.id);
@@ -831,13 +1811,24 @@ function AppContent() {
       setActiveConversationId(notif.actorId || '');
       openMessages(notif.actorId || undefined);
     } else if (notif.targetType === 'post') {
-      openHome();
-    } else if (notif.actorId) {
-      openProfile(notif.actorId === user.id ? 'me' : notif.actorId);
+      openPulse();
+    } else if (notif.actorId && notif.actorId !== 'system' && notif.type !== 'system') {
+      const actor = creators.find((c) => c.id === notif.actorId);
+      openProfile(
+        notif.actorId === user.id ? 'me' : notif.actorId,
+        actor || {
+          id: notif.actorId,
+          name: notif.actorName,
+          username:
+            notif.actorUsername || notif.actorName.toLowerCase().replace(/\s+/g, '_'),
+          avatar: notif.actorAvatar,
+          isVerified: notif.actorVerified,
+        }
+      );
     }
   };
 
-  const unreadNotifsCount = notifications.filter((n) => !n.isRead).length;
+  const unreadNotifsCount = isNotifsMuted ? 0 : notifications.filter((n) => !n.isRead).length;
   const unreadMessagesCount = conversations.reduce((sum, c) => sum + c.unreadCount, 0);
   const activeCommentPost = posts.find((p) => p.id === activeCommentPostId);
 
@@ -894,7 +1885,7 @@ function AppContent() {
 
       <div
         id="enmmoe-app-root"
-        className="h-screen h-[100dvh] max-h-screen w-full max-w-4xl flex flex-col overflow-hidden relative font-sans select-none bg-white dark:bg-black text-black dark:text-white lg:border-x border-black/[0.06] dark:border-white/[0.08]"
+        className="h-[100dvh] max-h-[100dvh] w-full max-w-4xl flex flex-col overflow-hidden relative font-sans select-none bg-white dark:bg-black text-black dark:text-white"
       >
         {isOffline && <OfflineBanner onRetry={() => window.location.reload()} />}
 
@@ -908,9 +1899,10 @@ function AppContent() {
                 tabScrollTopRef.current.home = e.currentTarget.scrollTop;
               }
             }}
+            style={isHomeVisible ? { touchAction: 'pan-y' } : undefined}
             className={
               isHomeVisible
-                ? 'flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden'
+                ? 'flex-1 h-full min-h-0 w-full overflow-y-auto overflow-x-hidden overscroll-y-contain [-webkit-overflow-scrolling:touch]'
                 : 'hidden'
             }
             aria-hidden={!showHomeTab}
@@ -928,12 +1920,12 @@ function AppContent() {
                 openChapter(chId, bookId ? getCanonicalWebtoonId(bookId) : undefined, ep)
               }
               onOpenUserProfile={(u) => openProfile(u.id === user.id ? 'me' : u.id, u)}
-              onOpenCreate={() => setShowCreateModal(true)}
-              onOpenPulse={openPulse}
               onOpenNotifications={() => setShowNotificationsModal(true)}
               unreadNotificationsCount={unreadNotifsCount}
               subscribedWebtoons={subscribedWebtoons}
               onToggleSubscribe={handleToggleSubscribeWebtoon}
+              likedWebtoons={likedWebtoons}
+              onToggleLike={handleToggleLikeWebtoon}
               isActive={isHomeVisible}
             />
           </div>
@@ -962,8 +1954,9 @@ function AppContent() {
                 openMessages(cId);
               }}
               onStartNewConversation={handleStartConversationWithUser}
-              onOpenStory={(idx) => setActiveStoryIndex(idx)}
-              onOpenCreateStory={() => setShowCreateModal(true)}
+              onOpenStory={handleOpenStoryAtIndex}
+              onOpenAuthorStory={handleOpenAuthorStory}
+              onOpenCreateStory={() => setShowStoryCreatorModal(true)}
               onSendMessage={handleSendMessage}
               onReactMessage={handleReactMessage}
               onDeleteMessage={handleDeleteMessage}
@@ -978,6 +1971,12 @@ function AppContent() {
               }}
               onUserTyping={handleUserTyping}
               onToggleFollow={handleToggleFollow}
+              onRequestAction={handleRequestAction}
+              onToggleBlockUser={handleToggleBlockUser}
+              onReportTarget={handleReportTarget}
+              onUpdatePrivacy={handleUpdateUserAndSync}
+              onCreateGroupConversation={handleCreateGroupConversation}
+              onOpenUserProfile={(u) => openProfile(u.id === user.id ? 'me' : u.id, u)}
               isTabActive={showMessagesTab && !isDeepScreen}
             />
           </div>
@@ -1004,6 +2003,8 @@ function AppContent() {
               reels={reels}
               subscribedWebtoons={subscribedWebtoons}
               onToggleSubscribe={handleToggleSubscribeWebtoon}
+              likedWebtoons={likedWebtoons}
+              onToggleLike={handleToggleLikeWebtoon}
               externalSearchTrigger={discoverSearchTagTrigger}
               onToggleFollow={handleToggleFollow}
               onOpenReel={() => openHome()}
@@ -1012,7 +2013,7 @@ function AppContent() {
             />
           </div>
 
-          {/* TAB 4: PULSE (Primary 3D Character, Seoul World & Community Hub) */}
+          {/* TAB 4: ENMMOE+ (Stories, X-style Posts, Shared Media & 3D Game World) */}
           <div
             ref={pulseScrollRef}
             onScroll={(e) => {
@@ -1020,9 +2021,10 @@ function AppContent() {
                 tabScrollTopRef.current.pulse = e.currentTarget.scrollTop;
               }
             }}
+            style={isPulseVisible ? { touchAction: 'pan-y' } : undefined}
             className={
               isPulseVisible
-                ? 'flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden'
+                ? 'flex-1 h-full min-h-0 w-full overflow-y-auto overflow-x-hidden overscroll-y-contain [-webkit-overflow-scrolling:touch]'
                 : 'hidden'
             }
             aria-hidden={!showPulseTab}
@@ -1031,11 +2033,15 @@ function AppContent() {
               currentUser={user}
               stories={stories}
               posts={posts}
-              onUpdateUser={(updated) => setUser((prev) => ({ ...prev, ...updated }))}
+              onUpdateUser={handleUpdateUserAndSync}
               onPublishStory={handlePublishStory}
               onPublishPost={handlePublishPost}
-              onOpenStory={(idx) => setActiveStoryIndex(idx)}
+              onOpenStory={handleOpenStoryAtIndex}
+              onOpenAuthorStory={handleOpenAuthorStory}
               onOpenCreate={() => setShowCreateModal(true)}
+              onOpenCreateStory={() => setShowStoryCreatorModal(true)}
+              onOpenNotifications={() => setShowNotificationsModal(true)}
+              unreadNotificationsCount={unreadNotifsCount}
               onReactPost={handleReactPost}
               onOpenComments={(pId) => setActiveCommentPostId(pId)}
               onToggleSave={handleToggleSavePost}
@@ -1068,8 +2074,40 @@ function AppContent() {
               reels={reels}
               subscribedWebtoons={subscribedWebtoons}
               onToggleSubscribe={handleToggleSubscribeWebtoon}
+              likedWebtoons={likedWebtoons}
+              onToggleLikeWebtoon={handleToggleLikeWebtoon}
+              highlights={highlights}
+              archiveStories={archiveStories.length > 0 ? archiveStories : stories.filter((s) => s.authorId === user.id)}
+              onOpenHighlight={(hl) => {
+                const pool = [...stories, ...archiveStories];
+                const hlStories = (hl.storyIds || [])
+                  .map((id) => pool.find((s) => s.id === id))
+                  .filter(Boolean) as Story[];
+                if (hlStories.length > 0) {
+                  setActiveStoryAuthorId(null);
+                  setActiveHighlightPlayback({ highlight: hl, stories: hlStories });
+                } else {
+                  showToast('No stories in this highlight yet', { type: 'info' });
+                }
+              }}
+              onSaveHighlight={handleSaveHighlight}
+              onDeleteHighlight={handleDeleteHighlight}
+              onOpenArchivedStory={(st) => {
+                setActiveStoryAuthorId(null);
+                setActiveHighlightPlayback({
+                  highlight: {
+                    id: `arch-${st.id}`,
+                    ownerId: user.id,
+                    title: 'Story Archive',
+                    coverImage: st.thumbnailUrl || st.mediaUrl,
+                    storyIds: [st.id],
+                    createdAt: st.createdAt,
+                  },
+                  stories: [st],
+                });
+              }}
               isActive={isProfileVisible}
-              showBackButton={canGoBack}
+              showBackButton={false}
               onBack={goBack}
               onOpenSettings={openSettings}
               onOpenEditProfile={() => setShowEditProfileModal(true)}
@@ -1083,7 +2121,7 @@ function AppContent() {
               }}
               onVotePoll={handleVotePoll}
               onOpenReportModal={(targetId) => setReportingTargetId(targetId)}
-              onUpdateUser={(updated) => setUser((prev) => ({ ...prev, ...updated }))}
+              onUpdateUser={handleUpdateUserAndSync}
               onOpenBook={(bookId, ep) => openBook(getCanonicalWebtoonId(bookId), ep)}
               onOpenUserProfile={(u) => openProfile(u.id === user.id ? 'me' : u.id, u)}
             />
@@ -1103,7 +2141,7 @@ function AppContent() {
                 <SettingsView
                   currentUser={user}
                   onBack={goBack}
-                  onUpdateUser={(updated) => setUser((prev) => ({ ...prev, ...updated }))}
+                  onUpdateUser={handleUpdateUserAndSync}
                   onOpenAuthModal={() => setShowAuthModal(true)}
                   onOpenEditProfile={() => setShowEditProfileModal(true)}
                 />
@@ -1111,29 +2149,16 @@ function AppContent() {
             )}
 
             {currentRoute.type === 'profile' && !isMyProfileRoute && (() => {
-              const matchedCreator = creators.find((c) => c.id === currentRoute.userId);
-              const profileTargetUser =
-                matchedCreator || currentRoute.user
-                  ? {
-                      ...matchedCreator,
-                      ...currentRoute.user,
-                      id: currentRoute.userId,
-                      name: currentRoute.user?.name || matchedCreator?.name || 'Creator',
-                      username: currentRoute.user?.username || matchedCreator?.username || 'creator',
-                      avatar: currentRoute.user?.avatar || matchedCreator?.avatar || creators[0]?.avatar || '',
-                      bio: currentRoute.user?.bio || matchedCreator?.bio,
-                      followersCount: matchedCreator?.followersCount ?? currentRoute.user?.followersCount,
-                      followingCount: matchedCreator?.followingCount ?? currentRoute.user?.followingCount,
-                      isVerified: currentRoute.user?.isVerified ?? matchedCreator?.isVerified,
-                    }
-                  : {
-                      id: currentRoute.userId,
-                      name: 'Creator',
-                      username: 'creator',
-                      avatar: creators[0]?.avatar || '',
-                      bio: 'Webtoon Author & Storyteller.',
-                      isVerified: false,
-                    };
+              const profileTargetUser = resolvePublicUser({
+                userId: currentRoute.userId,
+                partialUser: currentRoute.user,
+                currentUser: user,
+                creators,
+                posts,
+                stories,
+                conversations,
+                webtoons: ALL_WEBTOONS,
+              });
               return (
                 <motion.div
                   key={`route-profile-${currentRoute.userId}`}
@@ -1151,6 +2176,19 @@ function AppContent() {
                     reels={reels}
                     subscribedWebtoons={subscribedWebtoons}
                     onToggleSubscribe={handleToggleSubscribeWebtoon}
+                    likedWebtoons={likedWebtoons}
+                    onToggleLikeWebtoon={handleToggleLikeWebtoon}
+                    highlights={highlights}
+                    onOpenHighlight={(hl) => {
+                      const pool = [...stories, ...archiveStories];
+                      const hlStories = (hl.storyIds || [])
+                        .map((id) => pool.find((s) => s.id === id))
+                        .filter(Boolean) as Story[];
+                      if (hlStories.length > 0) {
+                        setActiveStoryAuthorId(null);
+                        setActiveHighlightPlayback({ highlight: hl, stories: hlStories });
+                      }
+                    }}
                     showBackButton={true}
                     onBack={goBack}
                     onOpenSettings={openSettings}
@@ -1165,7 +2203,7 @@ function AppContent() {
                     }}
                     onVotePoll={handleVotePoll}
                     onOpenReportModal={(targetId) => setReportingTargetId(targetId)}
-                    onUpdateUser={(updated) => setUser((prev) => ({ ...prev, ...updated }))}
+                    onUpdateUser={handleUpdateUserAndSync}
                     onOpenBook={(bookId, ep) => openBook(getCanonicalWebtoonId(bookId), ep)}
                     onOpenUserProfile={(u) => openProfile(u.id === user.id ? 'me' : u.id, u)}
                   />
@@ -1178,8 +2216,12 @@ function AppContent() {
           {currentRoute.type === 'book' && (() => {
             const canonicalId = getCanonicalWebtoonId(currentRoute.bookId);
             const book = resolveWebtoonById(canonicalId) || ALL_WEBTOONS[0];
-            const bookIsSubscribed =
-              subscribedWebtoons[book.id] ?? Boolean(book.isSubscribed);
+            const bookIsSubscribed = isWebtoonSubscribed(
+              subscribedWebtoons,
+              book.id,
+              Boolean(book.isSubscribed)
+            );
+            const bookIsLiked = isWebtoonLiked(likedWebtoons, book.id);
             return (
               <WebtoonReaderModal
                 key={`book-${book.id}`}
@@ -1191,8 +2233,15 @@ function AppContent() {
                 initialEpisodeNumber={currentRoute.initialEpisodeNumber}
                 onSelectChapter={(chId, epNum) => openChapter(chId, book.id, epNum)}
                 isSubscribed={bookIsSubscribed}
+                isLiked={bookIsLiked}
+                likedEpisodes={likedEpisodes}
                 onToggleSubscribe={handleToggleSubscribeWebtoon}
+                onToggleLike={handleToggleLikeWebtoon}
+                onToggleEpisodeLike={handleToggleEpisodeLike}
                 onSelectTag={handleSelectSeriesTag}
+                creators={creators}
+                currentUser={user}
+                onOpenUserProfile={(u) => openProfile(u.id === user.id ? 'me' : u.id, u)}
                 theme={user.theme === 'light' ? 'light' : 'dark'}
               />
             );
@@ -1207,8 +2256,12 @@ function AppContent() {
               ) ||
               ALL_WEBTOONS[0];
             const canonicalBook = resolveWebtoonById(chapterWebtoon.id) || chapterWebtoon;
-            const chapterIsSubscribed =
-              subscribedWebtoons[canonicalBook.id] ?? Boolean(canonicalBook.isSubscribed);
+            const chapterIsSubscribed = isWebtoonSubscribed(
+              subscribedWebtoons,
+              canonicalBook.id,
+              Boolean(canonicalBook.isSubscribed)
+            );
+            const chapterIsLiked = isWebtoonLiked(likedWebtoons, canonicalBook.id);
             return (
               <WebtoonReaderModal
                 key={`chapter-${canonicalBook.id}-${currentRoute.chapterId}`}
@@ -1228,8 +2281,15 @@ function AppContent() {
                   openChapter(chId, canonicalBook.id, epNum)
                 }
                 isSubscribed={chapterIsSubscribed}
+                isLiked={chapterIsLiked}
+                likedEpisodes={likedEpisodes}
                 onToggleSubscribe={handleToggleSubscribeWebtoon}
+                onToggleLike={handleToggleLikeWebtoon}
+                onToggleEpisodeLike={handleToggleEpisodeLike}
                 onSelectTag={handleSelectSeriesTag}
+                creators={creators}
+                currentUser={user}
+                onOpenUserProfile={(u) => openProfile(u.id === user.id ? 'me' : u.id, u)}
                 theme={user.theme === 'light' ? 'light' : 'dark'}
               />
             );
@@ -1246,19 +2306,20 @@ function AppContent() {
               }
               if (tab === 'home') {
                 openHome();
-              } else if (tab === 'pulse') {
-                openPulse();
+              } else if (tab === 'discover') {
+                openDiscover();
               } else if (tab === 'messages') {
                 setActiveConversationId('');
                 openMessages();
+              } else if (tab === 'pulse') {
+                openPulse();
               } else if (tab === 'profile') {
                 openProfile('me');
-              } else if (tab === 'discover') {
-                openDiscover();
               }
             }}
             unreadMessagesCount={unreadMessagesCount}
             userAvatar={user.avatar}
+            userName={user.name}
             theme={user.theme === 'light' ? 'light' : 'dark'}
           />
         )}
@@ -1275,34 +2336,67 @@ function AppContent() {
           />
         )}
 
-        {messageToForward && (
+        {(messageToForward || storyToShare) && (
           <ForwardModal
-            isOpen={Boolean(messageToForward)}
-            onClose={() => setMessageToForward(null)}
+            isOpen={Boolean(messageToForward || storyToShare)}
+            onClose={() => {
+              setMessageToForward(null);
+              setStoryToShare(null);
+            }}
             messageToForward={messageToForward}
+            storyToShare={storyToShare}
             conversations={conversations}
-            onForward={(targetConvId, text) => handleSendMessage(targetConvId, text)}
+            onForward={(targetConvId, text, storyReply) =>
+              handleSendMessage(targetConvId, text, undefined, storyReply)
+            }
           />
         )}
 
-        {activeStoryIndex !== null && (
+        {(activeStoryAuthorId !== null || activeHighlightPlayback !== null) && (
           <StoryViewerModal
-            stories={stories}
-            initialIndex={activeStoryIndex}
-            isOpen={activeStoryIndex !== null}
-            onClose={() => setActiveStoryIndex(null)}
+            isOpen={true}
+            onClose={() => {
+              setActiveStoryAuthorId(null);
+              setActiveHighlightPlayback(null);
+            }}
+            currentUser={user}
+            creators={creators}
+            groups={storyGroups}
+            initialAuthorId={activeStoryAuthorId || undefined}
+            initialSlideIndex={activeStoryInitialSlide}
+            highlightMode={activeHighlightPlayback}
+            onViewStory={handleViewStory}
+            onLikeStory={handleLikeStory}
+            onReactStory={handleReactStory}
+            onVotePoll={handleVoteStoryPoll}
+            onAnswerQuestion={handleAnswerStoryQuestion}
+            onInteractSticker={handleInteractStorySticker}
             onSendStoryReply={handleSendStoryReply}
-            onReactStory={(storyId) =>
-              setStories((prev) =>
-                prev.map((s) => (s.id === storyId ? { ...s, isSeen: true } : s))
-              )
-            }
+            onUpdateStory={handleUpdateStoryMetadata}
+            onDeleteStory={handleDeleteStory}
+            onMuteAuthor={handleMuteStoryAuthor}
+            onReportStory={handleReportStory}
+            onShareStory={(story) => {
+              setActiveStoryAuthorId(null);
+              setActiveHighlightPlayback(null);
+              setStoryToShare(story);
+            }}
             onOpenUserProfile={(u) => {
-              setActiveStoryIndex(null);
+              setActiveStoryAuthorId(null);
+              setActiveHighlightPlayback(null);
               openProfile(u.id === user.id ? 'me' : u.id, u);
             }}
           />
         )}
+
+        <StoryCreatorModal
+          isOpen={showStoryCreatorModal}
+          onClose={() => setShowStoryCreatorModal(false)}
+          currentUser={user}
+          creators={creators}
+          onPublishStory={handlePublishStory}
+          onUpdatePrivacy={handleUpdateUserAndSync}
+        />
 
         <CreateModal
           isOpen={showCreateModal}
@@ -1310,6 +2404,7 @@ function AppContent() {
           currentUser={user}
           onPublishPost={handlePublishPost}
           onPublishStory={handlePublishStory}
+          onOpenStoryCreator={() => setShowStoryCreatorModal(true)}
         />
 
         {activeCommentPost && (
@@ -1334,6 +2429,11 @@ function AppContent() {
           notifications={notifications}
           onMarkAllAsRead={handleMarkAllNotifsRead}
           onNotificationClick={handleNotificationClick}
+          onOpenUserProfile={(u) => {
+            setShowNotificationsModal(false);
+            const matched = creators.find((c) => c.id === u.id);
+            openProfile(u.id === user.id ? 'me' : u.id, matched || u);
+          }}
         />
 
         <EditProfileModal
@@ -1348,33 +2448,6 @@ function AppContent() {
           onClose={() => setReportingTargetId(null)}
           targetId={reportingTargetId || ''}
         />
-
-        <AnimatePresence>
-          {viewingProfileUser && (
-            <UserProfileScreen
-              isOpen={Boolean(viewingProfileUser)}
-              user={viewingProfileUser}
-              currentUser={user}
-              isFollowing={(user.followingIds || []).includes(viewingProfileUser.id)}
-              onToggleFollow={handleToggleFollow}
-              onSendMessage={(targetUserId) => {
-                const u = viewingProfileUser;
-                setViewingProfileUser(null);
-                handleStartConversationWithUser(targetUserId, u);
-              }}
-              onOpenEditProfile={() => {
-                setViewingProfileUser(null);
-                setShowEditProfileModal(true);
-              }}
-              onOpenStoryReader={(bookId, ep) => {
-                setViewingProfileUser(null);
-                openBook(getCanonicalWebtoonId(bookId), ep);
-              }}
-              onClose={() => setViewingProfileUser(null)}
-              isLight={user.theme === 'light'}
-            />
-          )}
-        </AnimatePresence>
       </div>
     </div>
   );

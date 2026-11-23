@@ -1,16 +1,21 @@
 import React, { useState } from 'react';
 import { Check, Users } from 'lucide-react';
-import { SocialConversation, SocialMessage } from '../types';
+import { SocialConversation, SocialMessage, Story } from '../types';
 import { INITIAL_CREATORS } from '../data/socialMockData';
-import { soundFX } from '../utils/audio';
+import { useLanguage } from '../utils/i18n';
 import { Avatar, BottomSheet, EmptyState, SearchBar, VerifiedBadge, useToast } from './ui';
 
 interface ForwardModalProps {
   isOpen: boolean;
   onClose: () => void;
   messageToForward: SocialMessage | null;
+  storyToShare?: Story | null;
   conversations: SocialConversation[];
-  onForward: (targetConvId: string, messageText: string) => void;
+  onForward: (
+    targetConvId: string,
+    messageText: string,
+    storyReply?: SocialMessage['storyReply']
+  ) => void;
 }
 
 interface ForwardTarget {
@@ -25,9 +30,11 @@ export const ForwardModal: React.FC<ForwardModalProps> = ({
   isOpen,
   onClose,
   messageToForward,
+  storyToShare,
   conversations,
   onForward,
 }) => {
+  const { t } = useLanguage();
   const { showToast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [sentMap, setSentMap] = useState<Record<string, boolean>>({});
@@ -63,36 +70,51 @@ export const ForwardModal: React.FC<ForwardModalProps> = ({
   );
 
   const handleSendToPerson = (target: ForwardTarget) => {
-    if (!messageToForward) return;
-    soundFX.playClick();
+    if (!messageToForward && !storyToShare) return;
     setSentMap((prev) => ({ ...prev, [target.id]: true }));
-    onForward(target.id, `Forwarded: "${messageToForward.text}"`);
-    showToast(`Sent to ${target.name}`, { type: 'success', durationMs: 1800 });
+    if (storyToShare) {
+      onForward(
+        target.id,
+        storyToShare.caption
+          ? `Shared ${storyToShare.authorName}'s story: "${storyToShare.caption}"`
+          : `Shared ${storyToShare.authorName}'s story`,
+        {
+          storyId: storyToShare.id,
+          authorId: storyToShare.authorId,
+          authorName: storyToShare.authorName,
+          thumbnailUrl: storyToShare.thumbnailUrl || storyToShare.mediaUrl,
+          storyCaption: storyToShare.caption,
+        }
+      );
+    } else if (messageToForward) {
+      onForward(target.id, `Forwarded: "${messageToForward.text}"`);
+    }
+    showToast(`${t('sent', 'Sent')} · ${target.name}`, { type: 'success', durationMs: 1800 });
 
     setTimeout(() => {
       setSentMap({});
       onClose();
-    }, 450);
+    }, 350);
   };
 
   return (
     <BottomSheet
-      isOpen={Boolean(isOpen && messageToForward)}
+      isOpen={Boolean(isOpen && (messageToForward || storyToShare))}
       onClose={onClose}
-      title="Forward Message"
+      title={storyToShare ? t('share_story', 'Share Story') : t('forward_message', 'Forward Message')}
     >
       <div className="px-4 py-3 space-y-4">
         <SearchBar
           value={searchQuery}
           onChange={setSearchQuery}
-          placeholder="Search recipient"
+          placeholder={t('search', 'Search')}
         />
 
         {filteredTargets.length === 0 ? (
           <EmptyState
             icon={<Users className="w-7 h-7" />}
-            title="No Matching Recipients"
-            description={`No people matched "${searchQuery}".`}
+            title={t('no_matching_people', 'No Matching People')}
+            description={searchQuery ? `"${searchQuery}"` : ''}
           />
         ) : (
           <div className="grid grid-cols-3 gap-x-3 gap-y-5 pt-1 pb-4">

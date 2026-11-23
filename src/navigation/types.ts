@@ -96,12 +96,12 @@ export function parsePathToRoute(pathname: string): AppRoute {
     };
   }
 
-  if (first === 'pulse' || first === 'world' || first === 'studio') {
+  if (first === 'pulse' || first === 'enmmoe-plus' || first === 'world' || first === 'studio') {
     return {
       key: 'pulse',
       type: 'pulse',
       path: '/pulse',
-      title: 'Pulse',
+      title: 'enmmoe+',
     };
   }
 

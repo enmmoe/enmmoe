@@ -12,6 +12,7 @@ import {
   Share2,
   SlidersHorizontal,
   Star,
+  Users,
 } from 'lucide-react';
 import {
   WebtoonItem,
@@ -19,7 +20,19 @@ import {
   getCanonicalWebtoonId,
   resolveWebtoonById,
 } from '../data/webtoonData';
+import { User } from '../types';
+import { buildSeriesAuthorProfileSeed } from '../utils/profileResolver';
 import { safeStorage } from '../utils/storage';
+import {
+  getSeriesDisplayLikesCount,
+  isWebtoonLiked,
+  loadLikedEpisodes,
+  loadLikedWebtoons,
+  saveLikedEpisodes,
+  saveLikedWebtoons,
+  toggleEpisodeLike,
+  toggleWebtoonLike,
+} from '../utils/webtoonInteractions';
 import {
   BottomSheet,
   Button,
@@ -28,6 +41,8 @@ import {
   Toggle,
   useToast,
 } from './ui';
+import { EmojiText } from './AppleEmoji';
+import { formatLocalizedDate, formatLocalizedNumber, useLanguage } from '../utils/i18n';
 
 export interface SavedReadingProgress {
   episodeId: string;
@@ -204,8 +219,21 @@ export interface WebtoonReaderModalProps {
   onSelectChapter?: (chapterId: string, episodeNumber?: number) => void;
   onBackToBook?: () => void;
   onToggleSubscribe?: (webtoonId: string) => void;
+  onToggleLike?: (webtoonId: string) => void;
+  onToggleEpisodeLike?: (episodeId: string) => void;
   onSelectTag?: (tag: string) => void;
   isSubscribed?: boolean;
+  isLiked?: boolean;
+  likedEpisodes?: Record<string, boolean>;
+  creators?: User[];
+  currentUser?: User;
+  onOpenUserProfile?: (user: {
+    id: string;
+    name: string;
+    username: string;
+    avatar: string;
+    isVerified?: boolean;
+  }) => void;
   theme?: 'light' | 'dark';
 }
 
@@ -220,9 +248,17 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
   onSelectChapter,
   onBackToBook,
   onToggleSubscribe,
+  onToggleLike,
+  onToggleEpisodeLike,
   onSelectTag,
   isSubscribed,
+  isLiked,
+  likedEpisodes: externalLikedEpisodes,
+  creators = [],
+  currentUser,
+  onOpenUserProfile,
 }) => {
+  const { language, t } = useLanguage();
   const { showToast } = useToast();
 
   const webtoon = rawWebtoon ? resolveWebtoonById(rawWebtoon.id) || rawWebtoon : null;
@@ -263,8 +299,12 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
     bookId ? getSeriesUserRating(bookId) ?? 10 : 10
   );
   const [readerPrefs, setReaderPrefs] = useState<ReaderPreferences>(getReaderPreferences);
-  const [episodeLikes, setEpisodeLikes] = useState<Record<string, number>>({});
-  const [likedEpisodes, setLikedEpisodes] = useState<Record<string, boolean>>({});
+  const [localLikedEpisodes, setLocalLikedEpisodes] = useState<Record<string, boolean>>(
+    loadLikedEpisodes
+  );
+  const [localLikedSeries, setLocalLikedSeries] = useState<Record<string, boolean>>(
+    loadLikedWebtoons
+  );
   const [subscribed, setSubscribed] = useState<boolean>(() =>
     isSubscribed !== undefined ? isSubscribed : Boolean(webtoon?.isSubscribed)
   );
@@ -272,6 +312,14 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
   const [chapterCommentsMap, setChapterCommentsMap] = useState<Record<string, ChapterComment[]>>(() =>
     safeStorage.getJSON<Record<string, ChapterComment[]>>(CHAPTER_COMMENTS_KEY, {})
   );
+
+  const likedEpisodes = externalLikedEpisodes ?? localLikedEpisodes;
+  const seriesLiked =
+    isLiked !== undefined
+      ? isLiked
+      : bookId
+      ? isWebtoonLiked(localLikedSeries, bookId)
+      : false;
 
   const readerScrollRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -283,6 +331,12 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
   useEffect(() => {
     setSubscribed(isSubscribed !== undefined ? isSubscribed : Boolean(webtoon?.isSubscribed));
   }, [isSubscribed, bookId, webtoon?.isSubscribed]);
+
+  useEffect(() => {
+    if (isLiked === undefined) {
+      setLocalLikedSeries(loadLikedWebtoons());
+    }
+  }, [isLiked, bookId]);
 
   useEffect(() => {
     const existing = bookId ? getSeriesUserRating(bookId) : null;
@@ -490,20 +544,45 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
     setShowEpisodesSheet(false);
   };
 
-  const handleToggleLikeEpisode = (epId: string, initialCount: number) => {
-    const isLiked = likedEpisodes[epId];
-    setLikedEpisodes((prev) => ({ ...prev, [epId]: !isLiked }));
-    setEpisodeLikes((prev) => ({
-      ...prev,
-      [epId]: (prev[epId] ?? initialCount) + (isLiked ? -1 : 1),
-    }));
+  const handleToggleLikeEpisode = (epId: string) => {
+    if (onToggleEpisodeLike) {
+      onToggleEpisodeLike(epId);
+      return;
+    }
+    setLocalLikedEpisodes((prev) => {
+      const { nextMap } = toggleEpisodeLike(prev, epId);
+      saveLikedEpisodes(nextMap);
+      return nextMap;
+    });
+  };
+
+  const handleToggleLikeSeries = () => {
+    if (!webtoon) return;
+    const canonicalId = getCanonicalWebtoonId(webtoon.id);
+    const nextLiked = !seriesLiked;
+    if (onToggleLike) {
+      onToggleLike(canonicalId);
+    } else {
+      setLocalLikedSeries((prev) => {
+        const { nextMap } = toggleWebtoonLike(prev, canonicalId);
+        saveLikedWebtoons(nextMap);
+        return nextMap;
+      });
+    }
+    showToast(
+      nextLiked
+        ? `Liked ${webtoon.title}`
+        : `Removed ${webtoon.title} from Likes`,
+      { type: 'success', durationMs: 1800 }
+    );
   };
 
   const handleToggleSub = () => {
+    if (!webtoon) return;
     const next = !subscribed;
     setSubscribed(next);
     onToggleSubscribe?.(webtoon.id);
-    showToast(next ? `Subscribed to ${webtoon.title}` : 'Removed from library', {
+    showToast(next ? `Subscribed to ${webtoon.title}` : 'Unsubscribed', {
       type: 'success',
       durationMs: 2000,
     });
@@ -560,12 +639,12 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
     <BottomSheet
       isOpen={showPreferencesSheet}
       onClose={() => setShowPreferencesSheet(false)}
-      title="Reader Preferences"
+      title={t('reader_preferences', 'Reader Preferences')}
     >
       <div className="p-4 space-y-5">
         <div className="space-y-2">
           <p className="text-[13px] font-semibold text-[#8E8E93] uppercase tracking-wider px-1">
-            Page Background
+            {t('page_background', 'Page Background')}
           </p>
           <div className="grid grid-cols-4 gap-2">
             {(
@@ -597,7 +676,7 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
 
         <div className="space-y-2">
           <p className="text-[13px] font-semibold text-[#8E8E93] uppercase tracking-wider px-1">
-            Panel Spacing
+            {t('panel_spacing', 'Panel Spacing')}
           </p>
           <div className="grid grid-cols-2 gap-2">
             {(
@@ -627,13 +706,13 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
 
         <div className="bg-[#F2F2F7] dark:bg-[#2C2C2E] rounded-2xl px-4 py-3 flex items-center justify-between gap-3">
           <div>
-            <p className="text-[15px] font-semibold">Auto-Hide Controls</p>
+            <p className="text-[15px] font-semibold">{t('auto_hide_controls', 'Auto-Hide Controls')}</p>
             <p className="text-[13px] text-[#8E8E93]">Hide reader bars while scrolling</p>
           </div>
           <Toggle
             checked={readerPrefs.autoHideControls}
             onChange={(val) => setReaderPrefs((p) => ({ ...p, autoHideControls: val }))}
-            ariaLabel="Auto-hide reader controls"
+            ariaLabel={t('auto_hide_controls', 'Auto-hide reader controls')}
           />
         </div>
       </div>
@@ -644,7 +723,7 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
     <BottomSheet
       isOpen={showCommentsSheet}
       onClose={() => setShowCommentsSheet(false)}
-      title={`Comments (${currentComments.length})`}
+      title={`${t('comments', 'Comments')} (${currentComments.length})`}
     >
       <div className="flex flex-col min-h-[300px]">
         <div className="p-4 space-y-3 flex-1">
@@ -654,12 +733,37 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
               className="p-3.5 rounded-2xl bg-[#F2F2F7] dark:bg-[#2C2C2E] space-y-1.5"
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="text-[14px] font-semibold">{comment.authorName}</span>
+                {onOpenUserProfile ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const matched = creators.find(
+                        (c) =>
+                          c.name.toLowerCase() === comment.authorName.toLowerCase() ||
+                          c.username.toLowerCase() === comment.authorName.toLowerCase()
+                      );
+                      setShowCommentsSheet(false);
+                      onOpenUserProfile(
+                        matched ||
+                          buildSeriesAuthorProfileSeed(
+                            comment.authorName,
+                            creators,
+                            currentUser
+                          )
+                      );
+                    }}
+                    className="text-[14px] font-semibold text-left hover:underline cursor-pointer bg-transparent border-0 p-0"
+                  >
+                    {comment.authorName}
+                  </button>
+                ) : (
+                  <span className="text-[14px] font-semibold">{comment.authorName}</span>
+                )}
                 <span className="text-[11px] text-[#8E8E93]">
-                  {new Date(comment.createdAt).toLocaleDateString()}
+                  {formatLocalizedDate(comment.createdAt, language)}
                 </span>
               </div>
-              <p className="text-[14px] leading-snug">{comment.text}</p>
+              <p className="text-[14px] leading-snug"><EmojiText text={comment.text} /></p>
               <button
                 type="button"
                 onClick={() => handleToggleCommentLike(comment.id)}
@@ -670,7 +774,7 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
                 }`}
               >
                 <Heart className={`w-3.5 h-3.5 ${comment.isLiked ? 'fill-current' : ''}`} />
-                <span className="tabular-nums">{comment.likes}</span>
+                <span className="tabular-nums">{formatLocalizedNumber(comment.likes, language)}</span>
               </button>
             </div>
           ))}
@@ -678,13 +782,13 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
 
         <form
           onSubmit={handlePostChapterComment}
-          className="sticky bottom-0 px-4 py-3 bg-white dark:bg-[#1C1C1E] border-t border-black/[0.06] dark:border-white/[0.08] flex items-center gap-2"
+          className="sticky bottom-0 px-4 py-3 bg-white dark:bg-[#1C1C1E] flex items-center gap-2"
         >
           <input
             type="text"
             value={commentInput}
             onChange={(e) => setCommentInput(e.target.value)}
-            placeholder="Share a thought on this episode..."
+            placeholder={t('write_comment', 'Share a thought on this episode...')}
             className="flex-1 h-10 rounded-full bg-[#F2F2F7] dark:bg-[#2C2C2E] px-4 text-[15px] text-black dark:text-white placeholder:text-[#8E8E93] outline-none"
           />
           <button
@@ -718,7 +822,7 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
     <BottomSheet
       isOpen={showRatingSheet}
       onClose={() => setShowRatingSheet(false)}
-      title="Rate Series"
+      title={t('rate_series', 'Rate Series')}
     >
       <div className="p-5 space-y-5 text-center">
         <div className="space-y-1">
@@ -727,8 +831,8 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
           </h3>
           <p className="text-[14px] text-[#8E8E93]">
             {userRating !== null
-              ? `Your rating: ${userRating} / 10`
-              : 'Tap a star to rate this series'}
+              ? `${t('rating', 'Your rating')}: ${userRating} / 10`
+              : t('tap_star_rate', 'Tap a star to rate this series')}
           </p>
         </div>
 
@@ -769,9 +873,9 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
         >
           {userRating !== null
             ? userRating === draftRating
-              ? `Rated ${userRating}/10`
-              : 'Update Rating'
-            : 'Submit Rating'}
+              ? `${t('rating', 'Rated')} ${userRating}/10`
+              : t('update_rating', 'Update Rating')
+            : t('submit_rating', 'Submit Rating')}
         </Button>
       </div>
     </BottomSheet>
@@ -790,7 +894,7 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
               exit={{ y: -24, opacity: 0 }}
               transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
               onClick={(e) => e.stopPropagation()}
-              className="fixed top-0 inset-x-0 z-30 bg-white/92 dark:bg-[#1C1C1E]/92 backdrop-blur-2xl border-b border-black/[0.08] dark:border-white/[0.1] text-black dark:text-white pt-safe"
+              className="fixed top-0 inset-x-0 z-30 bg-white/92 dark:bg-[#1C1C1E]/92 backdrop-blur-2xl text-black dark:text-white pt-safe"
             >
               <div className="max-w-3xl mx-auto h-12 px-2 flex items-center justify-between gap-2">
                 <button
@@ -803,11 +907,11 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
                     else if (onBackToBook) onBackToBook();
                     else setActiveTab('episodes');
                   }}
-                  aria-label="Back"
+                  aria-label={t('back', 'Back')}
                   className="min-w-[44px] min-h-[44px] inline-flex items-center gap-0.5 px-2 text-[#007AFF] cursor-pointer ios-press"
                 >
                   <ChevronLeft className="w-6 h-6 stroke-[2.2]" />
-                  <span className="text-[16px]">Back</span>
+                  <span className="text-[16px]">{t('back', 'Back')}</span>
                 </button>
 
                 <div className="flex-1 min-w-0 text-center">
@@ -877,7 +981,7 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
             </div>
 
             {/* End of Chapter Actions */}
-            <div className="px-5 py-8 border-t border-black/[0.08] dark:border-white/[0.08] text-center space-y-5">
+            <div className="px-5 py-8 text-center space-y-5">
               <div>
                 <p className="text-[13px] font-medium text-[#8E8E93]">End of Episode {currentEpisode.number}</p>
                 <h2 className="text-[20px] font-semibold mt-0.5">{currentEpisode.title}</h2>
@@ -885,13 +989,10 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
 
               <div className="flex flex-wrap items-center justify-center gap-2.5">
                 <button
+                  id="episode-like-btn"
                   type="button"
-                  onClick={() =>
-                    handleToggleLikeEpisode(
-                      currentEpisode.id,
-                      episodeLikes[currentEpisode.id] ?? currentEpisode.likes
-                    )
-                  }
+                  aria-pressed={Boolean(likedEpisodes[currentEpisode.id])}
+                  onClick={() => handleToggleLikeEpisode(currentEpisode.id)}
                   className={`min-h-[44px] px-4 rounded-2xl text-[15px] font-semibold inline-flex items-center gap-2 ios-press cursor-pointer ${
                     likedEpisodes[currentEpisode.id]
                       ? 'bg-[#007AFF] text-white'
@@ -902,7 +1003,10 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
                     className={`w-4 h-4 ${likedEpisodes[currentEpisode.id] ? 'fill-current' : ''}`}
                   />
                   <span className="tabular-nums">
-                    {(episodeLikes[currentEpisode.id] ?? currentEpisode.likes).toLocaleString()}
+                    {formatLocalizedNumber(
+                      currentEpisode.likes + (likedEpisodes[currentEpisode.id] ? 1 : 0),
+                      language
+                    )}
                   </span>
                 </button>
 
@@ -912,19 +1016,20 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
                   className="min-h-[44px] px-4 rounded-2xl text-[15px] font-semibold bg-[#F2F2F7] dark:bg-[#1C1C1E] text-black dark:text-white inline-flex items-center gap-2 ios-press cursor-pointer"
                 >
                   <MessageCircle className="w-4 h-4 text-[#007AFF]" />
-                  <span>Comments ({currentComments.length})</span>
+                  <span>{t('comments', 'Comments')} ({currentComments.length})</span>
                 </button>
 
                 <Button
+                  id="reader-subscribe-btn"
                   variant={subscribed ? 'secondary' : 'primary'}
                   size="md"
                   onClick={handleToggleSub}
                 >
-                  {subscribed ? 'Subscribed' : 'Subscribe'}
+                  {subscribed ? t('subscribed', 'Subscribed') : t('subscribe', 'Subscribe')}
                 </Button>
               </div>
 
-              <div className="flex items-center justify-between pt-4 border-t border-black/[0.06] dark:border-white/[0.08]">
+              <div className="flex items-center justify-between pt-4">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -966,7 +1071,7 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
               exit={{ y: 24, opacity: 0 }}
               transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
               onClick={(e) => e.stopPropagation()}
-              className="fixed bottom-0 inset-x-0 z-30 bg-white/92 dark:bg-[#1C1C1E]/92 backdrop-blur-2xl border-t border-black/[0.08] dark:border-white/[0.1] text-black dark:text-white pb-safe"
+              className="fixed bottom-0 inset-x-0 z-30 bg-white/92 dark:bg-[#1C1C1E]/92 backdrop-blur-2xl text-black dark:text-white pb-safe"
             >
               <div className="max-w-3xl mx-auto px-4 py-3 space-y-2.5">
                 <div className="flex items-center gap-3">
@@ -1038,7 +1143,7 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
                   onClick={() => goToEpisode(idx)}
                   className="w-full py-3 flex items-center gap-3 text-left cursor-pointer ios-press"
                 >
-                  <div className="w-16 h-11 rounded-lg overflow-hidden shrink-0 border border-black/[0.06] dark:border-white/[0.08]">
+                  <div className="w-16 h-11 rounded-lg overflow-hidden shrink-0 bg-[#F2F2F7] dark:bg-[#1C1C1E]">
                     <SmartImage src={ep.thumbnail} alt={ep.title} aspectClassName="w-full h-full" />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -1086,17 +1191,17 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 bg-white dark:bg-black text-black dark:text-white flex flex-col overflow-hidden select-none">
       {/* iOS Top Navigation Bar */}
-      <header className="shrink-0 bg-white/90 dark:bg-black/90 backdrop-blur-2xl border-b border-black/[0.08] dark:border-white/[0.1] pt-safe">
+      <header className="shrink-0 bg-white/92 dark:bg-black/92 backdrop-blur-2xl pt-safe">
         <div className="max-w-3xl mx-auto h-12 px-2 flex items-center justify-between gap-2">
           <button
             id="book-back-button"
             type="button"
             onClick={onBack || onClose}
-            aria-label="Back"
+            aria-label={t('back', 'Back')}
             className="min-w-[44px] min-h-[44px] inline-flex items-center gap-0.5 px-2 text-[#007AFF] cursor-pointer ios-press"
           >
             <ChevronLeft className="w-6 h-6 stroke-[2.2]" />
-            <span className="text-[17px]">Back</span>
+            <span className="text-[17px]">{t('back', 'Back')}</span>
           </button>
 
           <h2 className="text-[17px] font-semibold truncate flex-1 text-center">
@@ -1148,14 +1253,33 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
                 <h1 className="text-[28px] font-bold tracking-tight leading-tight mt-0.5">
                   {webtoon.title}
                 </h1>
-                <p className="text-[15px] text-white/80 mt-0.5">{webtoon.author}</p>
+                {onOpenUserProfile ? (
+                  <button
+                    id="series-author-profile-btn"
+                    type="button"
+                    onClick={() =>
+                      onOpenUserProfile(
+                        buildSeriesAuthorProfileSeed(
+                          webtoon.author,
+                          creators,
+                          currentUser
+                        )
+                      )
+                    }
+                    className="text-[15px] text-white/85 hover:text-white hover:underline mt-0.5 cursor-pointer bg-transparent border-0 p-0 text-left inline-flex items-center gap-1"
+                  >
+                    {webtoon.author}
+                  </button>
+                ) : (
+                  <p className="text-[15px] text-white/80 mt-0.5">{webtoon.author}</p>
+                )}
               </div>
             </div>
           </div>
 
           {/* Unboxed Tabular Stats & Primary Actions */}
-          <div className="px-4 pt-5 pb-4 space-y-4 border-b border-black/[0.06] dark:border-white/[0.08]">
-            <div className="grid grid-cols-3 divide-x divide-black/[0.08] dark:divide-white/[0.08] text-center">
+          <div className="px-4 pt-5 pb-4 space-y-4">
+            <div className="grid grid-cols-4 divide-x divide-black/[0.08] dark:divide-white/[0.08] text-center">
               <button
                 id="series-rating-stat-btn"
                 type="button"
@@ -1170,7 +1294,7 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
                 }
                 className="flex flex-col items-center justify-center cursor-pointer ios-press focus-visible:outline-none"
               >
-                <p className="text-[18px] font-semibold inline-flex items-center gap-1 tabular-nums text-black dark:text-white">
+                <p className="text-[16px] sm:text-[18px] font-semibold inline-flex items-center gap-1 tabular-nums text-black dark:text-white">
                   <Star
                     className={`w-4 h-4 transition-colors ${
                       userRating !== null
@@ -1181,37 +1305,57 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
                   />
                   <span>{effectiveRating.toFixed(2)}</span>
                 </p>
-                <p className="text-[13px] text-[#8E8E93]">Rating</p>
+                <p className="text-[12px] sm:text-[13px] text-[#8E8E93]">{t('rating', 'Rating')}</p>
               </button>
 
               <div>
-                <p className="text-[18px] font-semibold inline-flex items-center gap-1 tabular-nums text-black dark:text-white">
+                <p className="text-[16px] sm:text-[18px] font-semibold inline-flex items-center gap-1 tabular-nums text-black dark:text-white">
                   <Eye className="w-4 h-4 text-[#8E8E93]" aria-hidden="true" />
                   <span>{webtoon.viewsCount}</span>
                 </p>
-                <p className="text-[13px] text-[#8E8E93]">Views</p>
+                <p className="text-[12px] sm:text-[13px] text-[#8E8E93]">{t('views_label', 'Views')}</p>
               </div>
 
-              <button
-                id="series-subscribe-stat-btn"
-                type="button"
-                onClick={handleToggleSub}
-                aria-pressed={subscribed}
-                aria-label={subscribed ? 'Unsubscribe from series' : 'Subscribe to series'}
-                className="flex flex-col items-center justify-center cursor-pointer ios-press focus-visible:outline-none"
-              >
-                <p className="text-[18px] font-semibold inline-flex items-center gap-1 tabular-nums text-black dark:text-white">
-                  <Heart
+              <div id="series-subscribers-stat">
+                <p className="text-[16px] sm:text-[18px] font-semibold inline-flex items-center gap-1 tabular-nums text-black dark:text-white">
+                  <Users
                     className={`w-4 h-4 transition-colors ${
-                      subscribed
-                        ? 'text-[#FF3B30] fill-[#FF3B30]'
-                        : 'text-[#8E8E93] stroke-[1.9]'
+                      subscribed ? 'text-[#007AFF]' : 'text-[#8E8E93]'
                     }`}
                     aria-hidden="true"
                   />
                   <span>{webtoon.subscribersCount}</span>
                 </p>
-                <p className="text-[13px] text-[#8E8E93]">Subscribers</p>
+                <p className="text-[12px] sm:text-[13px] text-[#8E8E93]">{t('subscribers', 'Subscribers')}</p>
+              </div>
+
+              <button
+                id="series-like-btn"
+                type="button"
+                onClick={handleToggleLikeSeries}
+                aria-pressed={seriesLiked}
+                aria-label={seriesLiked ? `Unlike ${webtoon.title}` : `Like ${webtoon.title}`}
+                className="flex flex-col items-center justify-center cursor-pointer ios-press focus-visible:outline-none"
+              >
+                <p className="text-[16px] sm:text-[18px] font-semibold inline-flex items-center gap-1 tabular-nums text-black dark:text-white">
+                  <Heart
+                    className={`w-4 h-4 transition-colors ${
+                      seriesLiked
+                        ? 'text-[#FF3B30] fill-[#FF3B30]'
+                        : 'text-[#8E8E93] stroke-[1.9]'
+                    }`}
+                    aria-hidden="true"
+                  />
+                  <span>
+                    {formatLocalizedNumber(
+                      getSeriesDisplayLikesCount(webtoon, seriesLiked),
+                      language
+                    )}
+                  </span>
+                </p>
+                <p className="text-[12px] sm:text-[13px] text-[#8E8E93]">
+                  {t('profile_stat_likes', 'Likes')}
+                </p>
               </button>
             </div>
 
@@ -1234,8 +1378,8 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
                 className="flex-1"
               >
                 {savedProgress
-                  ? `Continue Ep. ${resumeEp?.number ?? savedProgress.episodeNumber}`
-                  : 'Read Now'}
+                  ? `${t('continue_ep', 'Continue Ep.')} ${resumeEp?.number ?? savedProgress.episodeNumber}`
+                  : t('read_now', 'Read Now')}
               </Button>
 
               <Button
@@ -1244,15 +1388,15 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
                 size="md"
                 onClick={handleToggleSub}
               >
-                {subscribed ? 'Subscribed' : 'Subscribe'}
+                {subscribed ? t('subscribed', 'Subscribed') : t('subscribe', 'Subscribe')}
               </Button>
             </div>
           </div>
 
           {/* Synopsis */}
-          <div className="px-4 py-4 border-b border-black/[0.06] dark:border-white/[0.08] space-y-2">
+          <div className="px-4 py-4 space-y-2">
             <h3 className="text-[13px] font-semibold text-[#8E8E93] uppercase tracking-wider">
-              Synopsis
+              {t('synopsis', 'Synopsis')}
             </h3>
             <p className="text-[15px] leading-relaxed text-black/85 dark:text-white/85">
               {webtoon.summary}
@@ -1281,7 +1425,7 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
           <div className="px-4 pt-5">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-[22px] font-semibold tracking-tight text-black dark:text-white">
-                Episodes ({webtoon.episodes.length})
+                {t('episodes', 'Episodes')} ({webtoon.episodes.length})
               </h2>
               <button
                 type="button"
@@ -1289,7 +1433,7 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
                 className="text-[13px] font-semibold text-[#007AFF] inline-flex items-center gap-1 cursor-pointer"
               >
                 <MessageCircle className="w-3.5 h-3.5" />
-                <span>Comments ({currentComments.length})</span>
+                <span>{t('comments', 'Comments')} ({currentComments.length})</span>
               </button>
             </div>
 
@@ -1319,7 +1463,7 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
                     }}
                     className="w-full py-3 flex items-center gap-3.5 text-left hover:bg-[#F2F2F7]/60 dark:hover:bg-[#1C1C1E]/60 px-2 -mx-2 rounded-xl transition-colors ios-press cursor-pointer"
                   >
-                    <div className="w-20 h-14 rounded-xl overflow-hidden shrink-0 border border-black/[0.06] dark:border-white/[0.08] relative">
+                    <div className="w-20 h-14 rounded-xl overflow-hidden shrink-0 bg-[#F2F2F7] dark:bg-[#1C1C1E] relative">
                       <SmartImage
                         src={ep.thumbnail}
                         alt={ep.title}
@@ -1338,7 +1482,7 @@ export const WebtoonReaderModal: React.FC<WebtoonReaderModalProps> = ({
                         </p>
                       </div>
                       <p className="text-[13px] text-[#8E8E93] mt-0.5 tabular-nums">
-                        Ep. {ep.number} · {ep.date} · {ep.likes.toLocaleString()} likes
+                        Ep. {ep.number} · {ep.date} · {formatLocalizedNumber(ep.likes, language)} {t('likes', 'likes')}
                       </p>
                     </div>
 

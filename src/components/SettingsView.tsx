@@ -27,7 +27,8 @@ import {
   ReaderPreferences,
 } from './WebtoonReaderModal';
 import { SocialPost, User } from '../types';
-import { SUPPORTED_LANGUAGES, useLanguage } from '../utils/i18n';
+import { SUPPORTED_LANGUAGES, formatLocalizedTime, useLanguage } from '../utils/i18n';
+import { EmojiText } from './AppleEmoji';
 import { ENMMOE_AVATARS } from '../data/enmmoeAvatars';
 import { INITIAL_CREATORS, INITIAL_POSTS } from '../data/socialMockData';
 import {
@@ -156,6 +157,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     if (typeof currentUser.isEmailVerified === 'boolean') {
       setIsEmailVerified(currentUser.isEmailVerified);
     }
+    setBlockedUserIds(currentUser.blockedUserIds || []);
+    setMutedUserIds(currentUser.mutedUserIds || []);
   }, [currentUser]);
 
   useEffect(() => {
@@ -340,7 +343,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       className="w-full min-h-full bg-[#F2F2F7] dark:bg-black text-black dark:text-white pb-14 select-none"
     >
       {/* iOS Navigation Bar */}
-      <header className="sticky top-0 z-30 bg-white/90 dark:bg-[#1C1C1E]/90 backdrop-blur-2xl border-b border-black/[0.08] dark:border-white/[0.1] pt-safe">
+      <header className="sticky top-0 z-30 bg-white/92 dark:bg-[#1C1C1E]/92 backdrop-blur-2xl pt-safe">
         <div className="max-w-2xl mx-auto h-12 px-2 flex items-center justify-between">
           <button
             id="settings-back-btn"
@@ -349,7 +352,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             className="min-w-[44px] min-h-[44px] inline-flex items-center gap-0.5 px-2 text-[#007AFF] cursor-pointer ios-press"
           >
             <ChevronLeft className="w-6 h-6 stroke-[2.2]" />
-            <span className="text-[17px]">Back</span>
+            <span className="text-[17px]">{t('back', 'Back')}</span>
           </button>
 
           <h1 className="text-[17px] font-semibold tracking-tight">
@@ -392,7 +395,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <p className="text-[13px] font-medium text-[#8E8E93] uppercase tracking-wider px-4">
             Account
           </p>
-          <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl divide-y divide-black/[0.06] dark:divide-white/[0.08] overflow-hidden border border-black/[0.04] dark:border-white/[0.08]">
+          <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl divide-y divide-black/[0.06] dark:divide-white/[0.08] overflow-hidden">
             <label className="px-4 py-3 flex items-center justify-between gap-4">
               <span className="text-[17px] shrink-0">{t('name', 'Name')}</span>
               <input
@@ -472,18 +475,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <p className="text-[13px] font-medium text-[#8E8E93] uppercase tracking-wider px-4">
             Personalization
           </p>
-          <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl divide-y divide-black/[0.06] dark:divide-white/[0.08] overflow-hidden border border-black/[0.04] dark:border-white/[0.08]">
+          <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl divide-y divide-black/[0.06] dark:divide-white/[0.08] overflow-hidden">
             <div className="min-h-[48px] px-4 py-3 flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-[#F2F2F7] dark:bg-[#2C2C2E] text-black dark:text-white flex items-center justify-center">
                   <Moon className="w-[17px] h-[17px] stroke-[1.9]" />
                 </div>
-                <span className="text-[17px]">Dark Appearance</span>
+                <span className="text-[17px]">{t('dark_mode', 'Dark Appearance')}</span>
               </div>
               <Toggle
                 checked={isDark}
                 onChange={(val) => onUpdateUser({ theme: val ? 'dark' : 'light' })}
-                ariaLabel="Toggle dark appearance"
+                ariaLabel={t('dark_mode', 'Toggle dark appearance')}
               />
             </div>
 
@@ -497,7 +500,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <div className="w-8 h-8 rounded-lg bg-[#007AFF]/12 dark:bg-[#007AFF]/18 text-[#007AFF] flex items-center justify-center shrink-0">
                   <BookOpen className="w-[17px] h-[17px] stroke-[1.9]" />
                 </div>
-                <span className="text-[17px]">Reader Preferences</span>
+                <span className="text-[17px]">{t('reader_preferences', 'Reader Preferences')}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="text-[15px] text-[#8E8E93] capitalize">
@@ -532,7 +535,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <p className="text-[13px] font-medium text-[#8E8E93] uppercase tracking-wider px-4">
             Privacy &amp; Security
           </p>
-          <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl divide-y divide-black/[0.06] dark:divide-white/[0.08] overflow-hidden border border-black/[0.04] dark:border-white/[0.08]">
+          <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl divide-y divide-black/[0.06] dark:divide-white/[0.08] overflow-hidden">
             <button
               id="settings-item-privacy"
               type="button"
@@ -543,7 +546,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <div className="w-8 h-8 rounded-lg bg-[#007AFF]/12 dark:bg-[#007AFF]/18 text-[#007AFF] flex items-center justify-center shrink-0">
                   <Shield className="w-[17px] h-[17px] stroke-[1.9]" />
                 </div>
-                <span className="text-[17px]">Privacy Controls</span>
+                <span className="text-[17px]">Privacy, Messages &amp; Stories</span>
               </div>
               <ChevronRight className="w-4 h-4 text-[#C7C7CC]" />
             </button>
@@ -577,7 +580,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <p className="text-[13px] font-medium text-[#8E8E93] uppercase tracking-wider px-4">
             Social
           </p>
-          <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl divide-y divide-black/[0.06] dark:divide-white/[0.08] overflow-hidden border border-black/[0.04] dark:border-white/[0.08]">
+          <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl divide-y divide-black/[0.06] dark:divide-white/[0.08] overflow-hidden">
             <button
               id="settings-item-mute"
               type="button"
@@ -620,7 +623,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <p className="text-[13px] font-medium text-[#8E8E93] uppercase tracking-wider px-4">
             App Information
           </p>
-          <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl divide-y divide-black/[0.06] dark:divide-white/[0.08] overflow-hidden border border-black/[0.04] dark:border-white/[0.08]">
+          <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl divide-y divide-black/[0.06] dark:divide-white/[0.08] overflow-hidden">
             <button
               id="settings-item-help"
               type="button"
@@ -631,7 +634,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <div className="w-8 h-8 rounded-lg bg-[#F2F2F7] dark:bg-[#2C2C2E] text-black dark:text-white flex items-center justify-center shrink-0">
                   <HelpCircle className="w-[17px] h-[17px] stroke-[1.9]" />
                 </div>
-                <span className="text-[17px]">Help &amp; Feedback</span>
+                <span className="text-[17px]">{t('settings_help', 'Help & Feedback')}</span>
               </div>
               <ChevronRight className="w-4 h-4 text-[#C7C7CC]" />
             </button>
@@ -646,7 +649,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <div className="w-8 h-8 rounded-lg bg-[#F2F2F7] dark:bg-[#2C2C2E] text-[#8E8E93] flex items-center justify-center shrink-0">
                   <Info className="w-[17px] h-[17px] stroke-[1.9]" />
                 </div>
-                <span className="text-[17px]">About enmmoe</span>
+                <span className="text-[17px]">{t('settings_about', 'About enmmoe')}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="text-[15px] text-[#8E8E93]">v2.0</span>
@@ -827,7 +830,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   >
                     <p className="font-semibold truncate">{log.subject}</p>
                     <p className="text-[#8E8E93] text-[12px]">
-                      {new Date(log.timestamp).toLocaleTimeString()} · {log.status}
+                      {formatLocalizedTime(log.timestamp, language)} · {log.status}
                     </p>
                   </div>
                 ))}
@@ -938,30 +941,32 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       <BottomSheet
         isOpen={activeSubModal === 'mute'}
         onClose={() => setActiveSubModal(null)}
-        title="Notifications & Mute"
+        title={t('settings_mute', 'Notifications & Mute')}
       >
         <div className="p-4 space-y-4">
           <div className="bg-[#F2F2F7] dark:bg-[#2C2C2E] rounded-2xl divide-y divide-black/[0.06] dark:divide-white/[0.08]">
             <div className="p-3.5 flex items-center justify-between">
-              <span className="text-[16px]">Mute Direct Messages</span>
+              <span className="text-[16px]">{t('mute_messages', 'Mute Direct Messages')}</span>
               <Toggle
                 checked={muteMessages}
                 onChange={(v) => {
                   setMuteMessages(v);
                   try {
                     localStorage.setItem('enmmoe_mute_messages', String(v));
+                    window.dispatchEvent(new Event('enmmoe:notif-prefs-changed'));
                   } catch {}
                 }}
               />
             </div>
             <div className="p-3.5 flex items-center justify-between">
-              <span className="text-[16px]">Pause Push Alerts</span>
+              <span className="text-[16px]">{t('pause_push_alerts', 'Pause Push Alerts')}</span>
               <Toggle
                 checked={muteNotifications}
                 onChange={(v) => {
                   setMuteNotifications(v);
                   try {
                     localStorage.setItem('enmmoe_mute_notifs', String(v));
+                    window.dispatchEvent(new Event('enmmoe:notif-prefs-changed'));
                   } catch {}
                 }}
               />
@@ -1051,13 +1056,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       <BottomSheet
         isOpen={activeSubModal === 'favourite'}
         onClose={() => setActiveSubModal(null)}
-        title="Saved Items"
+        title={t('settings_favourite', 'Saved Items')}
       >
         <div className="p-4">
           {favouritePosts.length === 0 ? (
             <EmptyState
               icon={<Bookmark className="w-6 h-6" />}
-              title="No saved items"
+              title={t('no_saved_yet', 'No saved items')}
               description="Posts and series you bookmark appear here."
             />
           ) : (
@@ -1069,7 +1074,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 >
                   <div className="min-w-0">
                     <p className="text-[15px] font-semibold truncate">{post.authorName}</p>
-                    <p className="text-[13px] text-[#8E8E93] line-clamp-1">{post.content}</p>
+                    <p className="text-[13px] text-[#8E8E93] line-clamp-1"><EmojiText text={post.content} /></p>
                   </div>
                   <Button
                     variant="secondary"
@@ -1162,9 +1167,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       <Dialog
         isOpen={activeSubModal === 'delete_account'}
         onClose={() => setActiveSubModal(null)}
-        title="Delete Account?"
+        title={t('settings_delete', 'Delete Account?')}
         description="This action requests permanent deletion of your account and reading history."
-        confirmLabel="Delete"
+        confirmLabel={t('delete', 'Delete')}
         destructive
         onConfirm={() => {
           showToast('Account deletion requested', { type: 'info' });

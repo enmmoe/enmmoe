@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Check, Ban } from 'lucide-react';
 import { TikTokBackButton } from './TikTokBackButton';
-import { soundFX } from '../utils/audio';
 import { triggerHaptic } from '../utils/telegram';
+import { useLanguage } from '../utils/i18n';
 
 export interface BubbleStyleDef {
   id: string;
@@ -183,6 +183,7 @@ export const TikTokBubbleStyleModal: React.FC<TikTokBubbleStyleModalProps> = ({
   onSave,
   isLight: propIsLight,
 }) => {
+  const { t } = useLanguage();
   const [isThemeLight, setIsThemeLight] = useState<boolean>(() => {
     if (propIsLight !== undefined) return propIsLight;
     if (typeof document !== 'undefined') {
@@ -230,20 +231,17 @@ export const TikTokBubbleStyleModal: React.FC<TikTokBubbleStyleModalProps> = ({
   const hasChanged = selectedStyleId !== currentStyleId;
 
   const handleSelect = (styleId: string) => {
-    soundFX.playPop();
     triggerHaptic();
     setSelectedStyleId(styleId);
   };
 
   const handleSave = () => {
-    soundFX.playSuccess();
     triggerHaptic();
     onSave(selectedStyleId);
     onClose();
   };
 
   const handleCancel = () => {
-    soundFX.playClick();
     onClose();
   };
 
@@ -261,10 +259,10 @@ export const TikTokBubbleStyleModal: React.FC<TikTokBubbleStyleModalProps> = ({
       >
         <header
           id="bubble-style-top-bar"
-          className={`relative z-50 flex items-center justify-between px-4 sm:px-5 py-3 border-b shrink-0 min-h-[56px] transition-colors ${
+          className={`relative z-50 flex items-center justify-between px-4 sm:px-5 py-3 shrink-0 min-h-[56px] transition-colors ${
             isLight
-              ? 'bg-[#FFFFFF] text-[#000000] border-black/[0.08]'
-              : 'bg-[#000000] text-[#FFFFFF] border-white/[0.12]'
+              ? 'bg-[#FFFFFF] text-[#000000]'
+              : 'bg-[#000000] text-[#FFFFFF]'
           }`}
           style={{
             paddingTop: 'max(12px, env(safe-area-inset-top, 12px))',
@@ -276,8 +274,8 @@ export const TikTokBubbleStyleModal: React.FC<TikTokBubbleStyleModalProps> = ({
               onClick={handleCancel}
               isLight={isLight}
               className="-ml-2"
-              ariaLabel="Back"
-              title="Back"
+              ariaLabel={t('back', 'Back')}
+              title={t('back', 'Back')}
             />
           </div>
 
@@ -287,7 +285,7 @@ export const TikTokBubbleStyleModal: React.FC<TikTokBubbleStyleModalProps> = ({
               isLight ? 'text-[#000000]' : 'text-[#FFFFFF]'
             }`}
           >
-            Bubble Style
+            {t('bubble_style', 'Bubble Style')}
           </h1>
 
           <div className="w-20 min-w-[70px] flex justify-end items-center">
@@ -299,7 +297,7 @@ export const TikTokBubbleStyleModal: React.FC<TikTokBubbleStyleModalProps> = ({
                 hasChanged ? 'opacity-100' : 'opacity-85 hover:opacity-100'
               }`}
             >
-              Save
+              {t('save_button', 'Save')}
             </button>
           </div>
         </header>
@@ -327,7 +325,7 @@ export const TikTokBubbleStyleModal: React.FC<TikTokBubbleStyleModalProps> = ({
               <div className={`flex items-center justify-end gap-1.5 mt-2.5 text-[11px] opacity-75 font-medium select-none ${currentDef.textClass}`}>
                 <span>10:42 PM</span>
                 <span>·</span>
-                <span>Sent</span>
+                <span>{t('sent', 'Sent')}</span>
                 <svg className="w-3.5 h-3.5 stroke-current" viewBox="0 0 24 24" fill="none" strokeWidth="2.5">
                   <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
@@ -344,7 +342,7 @@ export const TikTokBubbleStyleModal: React.FC<TikTokBubbleStyleModalProps> = ({
         >
           <div className="mb-3 sm:mb-4 shrink-0">
             <h2 className="text-[17px] sm:text-[18px] font-bold tracking-tight">
-              Bubble Styles
+              {t('bubble_styles', 'Bubble Styles')}
             </h2>
             <p className="text-[12.5px] sm:text-[13px] text-[#8E8E93] mt-0.5 sm:mt-1 leading-normal">
               Applies to new outgoing messages across all chats.

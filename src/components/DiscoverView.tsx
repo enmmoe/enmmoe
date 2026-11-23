@@ -14,9 +14,10 @@ import {
   getCanonicalWebtoonId,
   resolveWebtoonById,
 } from '../data/webtoonData';
-import { useLanguage } from '../utils/i18n';
+import { formatLocalizedNumber, useLanguage } from '../utils/i18n';
 import { WebtoonReaderModal } from './WebtoonReaderModal';
 import { safeStorage } from '../utils/storage';
+import { isWebtoonLiked, isWebtoonSubscribed } from '../utils/webtoonInteractions';
 import {
   Avatar,
   BookCover,
@@ -40,6 +41,8 @@ interface DiscoverViewProps {
   onOpenUserProfile?: (user: { id: string; name: string; username: string; avatar: string; isVerified?: boolean }) => void;
   subscribedWebtoons?: Record<string, boolean>;
   onToggleSubscribe?: (webtoonId: string) => void;
+  likedWebtoons?: Record<string, boolean>;
+  onToggleLike?: (webtoonId: string) => void;
   externalSearchTrigger?: { query: string; nonce: number } | null;
 }
 
@@ -63,9 +66,11 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   onOpenUserProfile,
   subscribedWebtoons,
   onToggleSubscribe,
+  likedWebtoons,
+  onToggleLike,
   externalSearchTrigger,
 }) => {
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -101,10 +106,10 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
   }, [externalSearchTrigger?.nonce, externalSearchTrigger?.query]);
 
   const categories: { id: CategoryTab; label: string }[] = [
-    { id: 'all', label: t('all', 'All') },
-    { id: 'trending', label: t('trending', 'Trending') },
-    { id: 'creators', label: 'Creators' },
-    { id: 'genres', label: t('genres', 'Genres') },
+    { id: 'all', label: t('all_notifs', 'All') },
+    { id: 'trending', label: t('feed_trending', 'Trending') },
+    { id: 'creators', label: t('people', 'Creators') },
+    { id: 'genres', label: t('topics', 'Genres') },
   ];
 
   const availableGenres = useMemo(() => {
@@ -185,7 +190,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
       className="w-full min-h-full bg-white dark:bg-black text-black dark:text-white pb-8 select-none"
     >
       {/* Sticky iOS Large Title + Search Bar */}
-      <header className="sticky top-0 z-30 bg-white/90 dark:bg-black/90 backdrop-blur-2xl border-b border-black/[0.06] dark:border-white/[0.08] pt-safe">
+      <header className="sticky top-0 z-30 bg-white/92 dark:bg-black/92 backdrop-blur-2xl pt-safe">
         <div className="px-4 pt-2 pb-3 space-y-3">
           {!isSearchFocused && !searchQuery && (
             <div className="flex items-center justify-between gap-3">
@@ -409,7 +414,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                                 {creator.isVerified && <VerifiedBadge size={14} />}
                               </div>
                               <p className="text-[13px] text-[#8E8E93] truncate">
-                                @{creator.username} · {creator.followersCount.toLocaleString()} subscribers
+                                @{creator.username} · {formatLocalizedNumber(creator.followersCount, language)} {t('subscribers', 'subscribers')}
                               </p>
                             </div>
                           </button>
@@ -459,7 +464,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                         {idx + 1}
                       </span>
 
-                      <div className="w-12 h-16 rounded-xl overflow-hidden shrink-0 border border-black/[0.06] dark:border-white/[0.08]">
+                      <div className="w-12 h-16 rounded-xl overflow-hidden shrink-0 bg-[#F2F2F7] dark:bg-[#1C1C1E]">
                         <SmartImage
                           src={series.coverImage}
                           alt={series.title}
@@ -472,7 +477,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                           {series.title}
                         </p>
                         <p className="text-[14px] text-[#8E8E93] truncate mt-0.5 tabular-nums">
-                          {series.genre} · {series.viewsCount} reads
+                          {series.genre} · {series.viewsCount} {t('reads', 'reads')}
                         </p>
                       </div>
 
@@ -506,7 +511,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                     icon={<Search className="w-6 h-6" />}
                     title={`No results for "${searchQuery}"`}
                     description="Try searching a different title, creator, or genre."
-                    actionLabel="Clear Search"
+                    actionLabel={t('clear_search', 'Clear Search')}
                     onAction={() => {
                       setSearchQuery('');
                       searchInputRef.current?.focus();
@@ -537,11 +542,14 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
           webtoon={activeReadingWebtoon.webtoon}
           initialEpisodeNumber={activeReadingWebtoon.episode}
           onClose={() => setActiveReadingWebtoon(null)}
-          isSubscribed={
-            subscribedWebtoons?.[getCanonicalWebtoonId(activeReadingWebtoon.webtoon.id)] ??
+          isSubscribed={isWebtoonSubscribed(
+            subscribedWebtoons,
+            activeReadingWebtoon.webtoon.id,
             Boolean(activeReadingWebtoon.webtoon.isSubscribed)
-          }
+          )}
+          isLiked={isWebtoonLiked(likedWebtoons, activeReadingWebtoon.webtoon.id)}
           onToggleSubscribe={onToggleSubscribe}
+          onToggleLike={onToggleLike}
           onSelectTag={(tag) => {
             setActiveReadingWebtoon(null);
             setActiveCategory('all');

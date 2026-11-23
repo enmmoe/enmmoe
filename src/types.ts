@@ -17,6 +17,7 @@ export interface User {
   pronouns?: string;
   joinDate?: string;
   isVerified?: boolean; // Authentic / Official verified badge
+  isOnline?: boolean;
   isPulsPlus?: boolean; // Premium PULS+ subscriber badge
   isPremium?: boolean; // Telegram-style Premium status
   hasDonatedVIP?: boolean; // VIP status unlocked
@@ -58,8 +59,17 @@ export interface User {
   isAchievementsPublic?: boolean;
   showActivityStatus?: boolean;
   readReceiptsEnabled?: boolean;
+  typingIndicatorsEnabled?: boolean;
   twoFactorEnabled?: boolean;
   birthdayVisibility?: 'public' | 'followers' | 'only_me';
+
+  // Story & Audience Privacy Controls
+  closeFriendIds?: string[];
+  hiddenStoryUserIds?: string[];
+  mutedStoryAuthorIds?: string[];
+  storyDefaultAudience?: StoryAudience;
+  storyReplyPermission?: StoryReplyPermission;
+  saveStoriesToArchive?: boolean;
   
   // Wallet / Coins
   walletBalance?: number; // In-app credits / tips
@@ -93,6 +103,137 @@ export interface User {
   equippedFrame?: string;
   unlockedFrames?: string[];
   readStatusEnabled?: boolean;
+}
+
+export type StoryAudience = 'everyone' | 'subscribers' | 'close_friends';
+export type StoryReplyPermission = 'everyone' | 'subscribers' | 'off';
+
+export interface StoryTextOverlay {
+  id: string;
+  text: string;
+  color: string;
+  bgStyle: 'none' | 'pill' | 'outline';
+  align: 'left' | 'center' | 'right';
+  size: 'sm' | 'md' | 'lg';
+  x: number; // percentage 0..100
+  y: number; // percentage 0..100
+}
+
+export interface StoryQuestionResponse {
+  id: string;
+  userId: string;
+  name: string;
+  username: string;
+  avatar: string;
+  answer: string;
+  createdAt: number;
+}
+
+export interface StorySticker {
+  id: string;
+  type: 'emoji' | 'mention' | 'location' | 'link' | 'countdown' | 'question' | 'slider';
+  x: number; // percentage 0..100
+  y: number; // percentage 0..100
+  emoji?: string;
+  userId?: string;
+  username?: string;
+  displayName?: string;
+  label?: string;
+  url?: string;
+  title?: string;
+  targetTimestamp?: number;
+  reminderUserIds?: string[];
+  question?: string;
+  responses?: StoryQuestionResponse[];
+  sliderEmoji?: string;
+  sliderValues?: Record<string, number>;
+}
+
+export interface StoryViewerEntry {
+  userId: string;
+  name: string;
+  username: string;
+  avatar: string;
+  viewedAt: number;
+  reactedEmoji?: string;
+  liked?: boolean;
+}
+
+export interface StoryHighlight {
+  id: string;
+  ownerId?: string;
+  title: string;
+  coverImage: string;
+  storyIds: string[];
+  createdAt: number;
+}
+
+export interface StoryDraft {
+  id: string;
+  mediaUrl: string;
+  thumbnailUrl?: string;
+  mediaType: 'photo' | 'video' | 'text';
+  backgroundGradient?: string;
+  caption?: string;
+  location?: string;
+  drawingDataUrl?: string;
+  cropTransform?: { scale: number; offsetX: number; offsetY: number };
+  textOverlays?: StoryTextOverlay[];
+  stickers?: StorySticker[];
+  poll?: {
+    question: string;
+    optionA: string;
+    optionB: string;
+  };
+  audience: StoryAudience;
+  hiddenFromIds: string[];
+  replyPermission: StoryReplyPermission;
+  saveToArchive: boolean;
+  savedAt: number;
+}
+
+export interface Story {
+  id: string;
+  authorId: string;
+  authorName: string;
+  authorUsername: string;
+  authorAvatar: string;
+  authorVerified?: boolean;
+  mediaUrl: string;
+  thumbnailUrl?: string;
+  mediaType: 'photo' | 'video' | 'text';
+  backgroundGradient?: string;
+  cropTransform?: { scale: number; offsetX: number; offsetY: number };
+  drawingDataUrl?: string;
+  textOverlays?: StoryTextOverlay[];
+  stickers?: StorySticker[];
+  caption?: string;
+  musicTitle?: string;
+  musicArtist?: string;
+  location?: string;
+  createdAt: number;
+  expiresAt: number;
+  canEditUntil?: number;
+  audience?: StoryAudience;
+  hiddenFromIds?: string[];
+  replyPermission?: StoryReplyPermission;
+  isSeen?: boolean;
+  viewsCount?: number;
+  viewers?: StoryViewerEntry[];
+  likesCount?: number;
+  likedByIds?: string[];
+  reactions?: { userId: string; emoji: string }[];
+  isArchived?: boolean;
+  mediaHash?: string;
+  poll?: {
+    question: string;
+    optionA: string;
+    optionB: string;
+    votesA: number;
+    votesB: number;
+    userVote?: 'A' | 'B';
+    voterVotes?: Record<string, 'A' | 'B'>;
+  };
 }
 
 export interface PollOption {
@@ -150,6 +291,7 @@ export interface SocialPost {
   userReaction?: ReactionType | null;
   isSaved?: boolean;
   isReposted?: boolean;
+  repostedByIds?: string[];
   isPinned?: boolean;
   comments?: PostComment[];
   reactionsBreakdown?: {
@@ -177,42 +319,6 @@ export interface PostComment {
   replyToCommentId?: string;
   replyToUsername?: string;
   replies?: PostComment[];
-}
-
-export interface StoryHighlight {
-  id: string;
-  title: string;
-  coverImage: string;
-  storyIds: string[];
-  createdAt: number;
-}
-
-export interface Story {
-  id: string;
-  authorId: string;
-  authorName: string;
-  authorUsername: string;
-  authorAvatar: string;
-  authorVerified?: boolean;
-  mediaUrl: string;
-  mediaType: 'photo' | 'video';
-  caption?: string;
-  musicTitle?: string;
-  musicArtist?: string;
-  location?: string;
-  createdAt: number;
-  expiresAt: number;
-  isSeen?: boolean;
-  viewsCount?: number;
-  reactions?: { userId: string; emoji: string }[];
-  poll?: {
-    question: string;
-    optionA: string;
-    optionB: string;
-    votesA: number;
-    votesB: number;
-    userVote?: 'A' | 'B';
-  };
 }
 
 export interface ShortVideo {
@@ -260,9 +366,18 @@ export interface SocialMessage {
     text: string;
     senderName: string;
   };
+  storyReply?: {
+    storyId: string;
+    authorId?: string;
+    thumbnailUrl?: string;
+    authorName: string;
+    mediaType?: 'photo' | 'video' | 'text';
+    storyCaption?: string;
+  };
   isPinned?: boolean;
   isEdited?: boolean;
   isDeleted?: boolean;
+  isUnsent?: boolean;
   bubbleStyle?: string;
 }
 
@@ -285,6 +400,8 @@ export interface SocialConversation {
   isMuted?: boolean;
   isBlockedByMe?: boolean;
   isBlockedByThem?: boolean;
+  isRequest?: boolean;
+  requestStatus?: 'pending' | 'accepted' | 'spam';
   messages: SocialMessage[];
   isTyping?: boolean;
   typingUserName?: string;
@@ -325,7 +442,7 @@ export type SocialNotification = NotificationItem;
 export interface ReportItem {
   id: string;
   reporterId: string;
-  targetType: 'post' | 'account' | 'message' | 'comment';
+  targetType: 'post' | 'account' | 'message' | 'comment' | 'story' | 'conversation';
   targetId: string;
   reason:
     | 'spam'

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Check, Lock, Pin, Trophy } from 'lucide-react';
+import { Check, Lock, Trophy } from 'lucide-react';
 import { AchievementItem } from '../types';
 import { BottomSheet, ProgressBar, SmartImage } from './ui';
 
@@ -29,40 +29,40 @@ export const AchievementShowcaseModal: React.FC<AchievementShowcaseModalProps> =
       title="Achievements"
       maxHeightClass="max-h-[90vh]"
     >
-      <div className="p-4 space-y-4">
+      <div className="px-4 py-3 space-y-5">
         {/* Progress Summary */}
-        <div className="p-4 rounded-2xl bg-[#F2F2F7] dark:bg-[#2C2C2E] space-y-2.5">
+        <div className="space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[15px] font-semibold">Overall Progress</span>
             <span className="text-[15px] font-semibold text-[#007AFF] tabular-nums">
               {earnedCount} / {totalMax}
             </span>
           </div>
-          <ProgressBar value={earnedCount} max={totalMax} heightClass="h-2" />
+          <ProgressBar value={earnedCount} max={totalMax} heightClass="h-1.5" />
         </div>
 
-        {/* Achievements List */}
-        <div className="space-y-2.5">
+        {/* Clean Unboxed Achievements List */}
+        <div className="divide-y divide-black/[0.06] dark:divide-white/[0.08]">
           {achievements.map((ach) => {
             const isPinned = pinnedAchievementIds.includes(ach.id);
             return (
               <div
                 key={ach.id}
-                className="p-3.5 rounded-2xl bg-[#F2F2F7] dark:bg-[#2C2C2E] flex items-center justify-between gap-3.5"
+                className={`py-3 flex items-center justify-between gap-3.5 ${
+                  !ach.isUnlocked ? 'opacity-65' : ''
+                }`}
               >
                 <div className="flex items-center gap-3.5 min-w-0 flex-1">
-                  <div className="w-14 h-14 rounded-2xl bg-white dark:bg-[#1C1C1E] border border-black/[0.06] dark:border-white/[0.08] overflow-hidden shrink-0 flex items-center justify-center p-1.5">
+                  <div className="w-12 h-12 rounded-xl bg-[#F2F2F7] dark:bg-[#2C2C2E] overflow-hidden shrink-0 flex items-center justify-center p-1.5">
                     {ach.imageUrl ? (
                       <SmartImage
                         src={ach.imageUrl}
                         alt={ach.name}
                         aspectClassName="w-full h-full"
-                        className={`object-contain ${
-                          !ach.isUnlocked ? 'grayscale opacity-50' : ''
-                        }`}
+                        className={`object-contain ${!ach.isUnlocked ? 'grayscale opacity-60' : ''}`}
                       />
                     ) : (
-                      <Trophy className="w-6 h-6 text-[#007AFF]" />
+                      <Trophy className="w-5 h-5 text-[#007AFF]" />
                     )}
                   </div>
 
@@ -76,31 +76,28 @@ export const AchievementShowcaseModal: React.FC<AchievementShowcaseModalProps> =
                   </div>
                 </div>
 
-                <div className="shrink-0 flex items-center gap-2">
+                <div className="shrink-0 flex items-center gap-2.5">
                   {ach.isUnlocked && onTogglePinAchievement && (
                     <button
                       type="button"
                       onClick={() => onTogglePinAchievement(ach.id)}
                       aria-label={isPinned ? 'Unpin achievement' : 'Pin achievement'}
-                      className={`h-8 px-2.5 rounded-full text-[12px] font-semibold inline-flex items-center gap-1 transition-colors cursor-pointer ios-press ${
-                        isPinned
-                          ? 'bg-[#007AFF] text-white'
-                          : 'bg-white dark:bg-[#1C1C1E] text-[#8E8E93] hover:text-black dark:hover:text-white'
+                      className={`min-h-[36px] px-2.5 text-[13px] font-semibold cursor-pointer ios-press ${
+                        isPinned ? 'text-[#007AFF]' : 'text-[#8E8E93] hover:text-black dark:hover:text-white'
                       }`}
                     >
-                      <Pin className="w-3 h-3" />
-                      <span>{isPinned ? 'Pinned' : 'Pin'}</span>
+                      {isPinned ? 'Pinned' : 'Pin'}
                     </button>
                   )}
 
                   {ach.isUnlocked ? (
-                    <div className="w-8 h-8 rounded-full bg-[#007AFF] flex items-center justify-center text-white">
-                      <Check className="w-4 h-4 stroke-[3]" />
-                    </div>
+                    <span className="w-6 h-6 rounded-full bg-[#007AFF] flex items-center justify-center text-white shrink-0">
+                      <Check className="w-3.5 h-3.5 stroke-[2.8]" />
+                    </span>
                   ) : (
-                    <div className="w-8 h-8 rounded-full bg-white dark:bg-[#1C1C1E] border border-black/[0.08] dark:border-white/[0.1] flex items-center justify-center text-[#8E8E93]">
-                      <Lock className="w-3.5 h-3.5" />
-                    </div>
+                    <span className="w-6 h-6 flex items-center justify-center text-[#8E8E93] shrink-0">
+                      <Lock className="w-4 h-4" />
+                    </span>
                   )}
                 </div>
               </div>

@@ -57,7 +57,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
               }
             }}
             onClick={(e) => e.stopPropagation()}
-            className={`relative z-10 w-full sm:max-w-md bg-white dark:bg-[#1C1C1E] text-black dark:text-white rounded-t-[24px] sm:rounded-[24px] border-t sm:border border-black/[0.08] dark:border-white/[0.1] shadow-[0_-10px_40px_rgba(0,0,0,0.14)] flex flex-col overflow-hidden ${maxHeightClass}`}
+            className={`relative z-10 w-full sm:max-w-md bg-white dark:bg-[#1C1C1E] text-black dark:text-white rounded-t-[24px] sm:rounded-[24px] shadow-[0_-10px_40px_rgba(0,0,0,0.16)] flex flex-col overflow-hidden ${maxHeightClass}`}
           >
             {/* Drag Handle */}
             <div className="pt-2.5 pb-1 flex justify-center shrink-0">
@@ -65,7 +65,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
             </div>
 
             {(title || showCloseButton || headerRight) && (
-              <div className="px-4 py-2.5 border-b border-black/[0.08] dark:border-white/[0.08] flex items-center justify-between shrink-0">
+              <div className="px-4 py-2.5 flex items-center justify-between shrink-0">
                 <h3 className="text-[18px] font-semibold truncate">{title}</h3>
                 <div className="flex items-center gap-2">
                   {headerRight}

@@ -13,9 +13,10 @@ import {
   Clock,
   Star,
 } from 'lucide-react';
-import { soundFX } from '../utils/audio';
 import { triggerHaptic } from '../utils/telegram';
 import { safeStorage } from '../utils/storage';
+import { useLanguage } from '../utils/i18n';
+import { AppleEmoji } from './AppleEmoji';
 
 export const DEFAULT_6_REACTIONS = ['❤️', '😂', '😮', '😢', '🔥', '👍'];
 
@@ -318,6 +319,7 @@ export const InstagramEmojiPickerModal: React.FC<InstagramEmojiPickerModalProps>
   onSaveCustomReactions,
   theme,
 }) => {
+  const { t } = useLanguage();
   const triggerReaction = onSelectReaction || onSelectEmoji || (() => {});
   const triggerSaveReactions = (reactions: string[]) => {
     if (onQuickReactionsChange) onQuickReactionsChange(reactions);
@@ -347,14 +349,12 @@ export const InstagramEmojiPickerModal: React.FC<InstagramEmojiPickerModalProps>
   }, [isOpen]);
 
   const handleSlotClick = (index: number) => {
-    soundFX.playClick();
     triggerHaptic('selection');
     // Toggle slot selection for custom replacement
     setSelectedSlotIndex((prev) => (prev === index ? null : index));
   };
 
   const handleResetDefaults = () => {
-    soundFX.playClick();
     triggerHaptic('medium');
     setQuickReactions(DEFAULT_6_REACTIONS);
     saveStoredQuickReactions(DEFAULT_6_REACTIONS);
@@ -363,7 +363,6 @@ export const InstagramEmojiPickerModal: React.FC<InstagramEmojiPickerModalProps>
   };
 
   const handleEmojiClick = (emoji: string) => {
-    soundFX.playClick();
     triggerHaptic('light');
 
     if (selectedSlotIndex !== null) {
@@ -461,7 +460,8 @@ export const InstagramEmojiPickerModal: React.FC<InstagramEmojiPickerModalProps>
                     key={idx}
                     type="button"
                     onClick={() => handleSlotClick(idx)}
-                    className={`relative py-1 rounded-xl text-xl flex items-center justify-center transition-all cursor-pointer select-none active:scale-90 ${
+                    aria-label={emoji}
+                    className={`relative py-1.5 rounded-xl flex items-center justify-center transition-all cursor-pointer select-none active:scale-90 ${
                       isSelectedSlot
                         ? 'ring-2 ring-[#007AFF] bg-[#007AFF]/20 scale-105 shadow-sm'
                         : isLight
@@ -469,7 +469,7 @@ export const InstagramEmojiPickerModal: React.FC<InstagramEmojiPickerModalProps>
                         : 'hover:bg-white/10'
                     }`}
                   >
-                    <span>{emoji}</span>
+                    <AppleEmoji char={emoji} size={22} />
                   </button>
                 );
               })}
@@ -479,8 +479,8 @@ export const InstagramEmojiPickerModal: React.FC<InstagramEmojiPickerModalProps>
             <button
               type="button"
               onClick={handleResetDefaults}
-              aria-label="Reset quick reactions"
-              title="Reset defaults"
+              aria-label={t('reset', 'Reset')}
+              title={t('reset', 'Reset')}
               className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer shrink-0 border ${
                 isLight
                   ? 'bg-[#F2F2F7] hover:bg-zinc-200 text-zinc-500 hover:text-black border-zinc-200'
@@ -494,7 +494,7 @@ export const InstagramEmojiPickerModal: React.FC<InstagramEmojiPickerModalProps>
             <button
               type="button"
               onClick={onClose}
-              aria-label="Close emoji picker"
+              aria-label={t('close', 'Close')}
               className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer shrink-0 border ${
                 isLight
                   ? 'bg-[#F2F2F7] hover:bg-zinc-200 text-zinc-600 hover:text-black border-zinc-200'
@@ -512,7 +512,7 @@ export const InstagramEmojiPickerModal: React.FC<InstagramEmojiPickerModalProps>
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search..."
+              placeholder={t('search_emojis', 'Search emojis...')}
               className={`w-full pl-8 pr-7 py-1.5 text-xs rounded-xl focus:outline-none focus:ring-1 focus:ring-[#007AFF] transition-colors border ${
                 isLight
                   ? 'bg-[#F2F2F7] text-[#000000] placeholder-zinc-400 border-zinc-200'
@@ -540,7 +540,6 @@ export const InstagramEmojiPickerModal: React.FC<InstagramEmojiPickerModalProps>
                   key={cat.id}
                   type="button"
                   onClick={() => {
-                    soundFX.playClick();
                     triggerHaptic('light');
                     setActiveCategory(cat.id);
                   }}
@@ -569,26 +568,27 @@ export const InstagramEmojiPickerModal: React.FC<InstagramEmojiPickerModalProps>
             }`}
           >
             {filteredEmojis.length > 0 ? (
-              <div className="grid grid-cols-6 gap-1 text-2xl text-center">
+              <div className="grid grid-cols-6 gap-1 text-center">
                 {filteredEmojis.map((item, index) => (
                   <button
                     key={`${item.char}-${index}`}
                     type="button"
                     onClick={() => handleEmojiClick(item.char)}
                     title={item.name}
+                    aria-label={item.name}
                     className={`p-1.5 rounded-xl transition-all flex items-center justify-center cursor-pointer select-none active:scale-85 ${
                       isLight
                         ? 'hover:bg-zinc-200/80'
                         : 'hover:bg-white/10'
                     }`}
                   >
-                    <span>{item.char}</span>
+                    <AppleEmoji char={item.char} size={26} />
                   </button>
                 ))}
               </div>
             ) : (
               <div className="py-10 text-center text-xs text-[#8E8E93]">
-                No emojis
+                {t('no_emojis_found', 'No emojis found')}
               </div>
             )}
           </div>

@@ -20,6 +20,7 @@ interface CreateModalProps {
   currentUser: User;
   onPublishPost: (post: Partial<SocialPost>) => void;
   onPublishStory: (story: Partial<Story>) => void;
+  onOpenStoryCreator?: () => void;
 }
 
 export const CreateModal: React.FC<CreateModalProps> = ({
@@ -28,6 +29,7 @@ export const CreateModal: React.FC<CreateModalProps> = ({
   currentUser,
   onPublishPost,
   onPublishStory,
+  onOpenStoryCreator,
 }) => {
   const { t } = useLanguage();
   const { showToast } = useToast();
@@ -110,7 +112,7 @@ export const CreateModal: React.FC<CreateModalProps> = ({
       });
     }
 
-    showToast('Published successfully', { type: 'success' });
+    showToast(t('status_updated', 'Published successfully'), { type: 'success' });
     setTextCaption('');
     setLocation('');
     setTags('');
@@ -139,7 +141,14 @@ export const CreateModal: React.FC<CreateModalProps> = ({
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setContentType(tab.id as any)}
+                onClick={() => {
+                  if (tab.id === 'story' && onOpenStoryCreator) {
+                    onClose();
+                    onOpenStoryCreator();
+                    return;
+                  }
+                  setContentType(tab.id as any);
+                }}
                 className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-[10px] text-[13px] font-medium whitespace-nowrap shrink-0 transition-all cursor-pointer ${
                   isActive
                     ? 'bg-white dark:bg-[#1C1C1E] text-black dark:text-white shadow-xs font-semibold'

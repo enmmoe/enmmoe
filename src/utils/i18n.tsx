@@ -7,6 +7,7 @@ import {
   POPULAR_LANGUAGE_CODES,
 } from './languages';
 import { TRANSLATIONS } from './translations';
+import { EXTENDED_TRANSLATIONS } from './translationsExtended';
 
 export type { LanguageCode, SupportedLanguage };
 export { SUPPORTED_LANGUAGES, POPULAR_LANGUAGE_CODES };
@@ -1064,6 +1065,7 @@ export const UI_TRANSLATIONS: Record<LanguageCode, Record<string, string>> = {} 
 const baseEnglish: Record<string, string> = {
   ...(TRANSLATIONS.en || {}),
   ...(ADDITIONAL_UI_TRANSLATIONS.en || {}),
+  ...(EXTENDED_TRANSLATIONS.en || {}),
 };
 
 SUPPORTED_LANGUAGES.forEach(({ code }) => {
@@ -1071,8 +1073,64 @@ SUPPORTED_LANGUAGES.forEach(({ code }) => {
     ...baseEnglish,
     ...(TRANSLATIONS[code] || {}),
     ...(ADDITIONAL_UI_TRANSLATIONS[code] || {}),
+    ...(EXTENDED_TRANSLATIONS[code] || {}),
   };
 });
+
+const LOCALE_MAP: Partial<Record<LanguageCode, string>> = {
+  fil: 'tl-PH',
+  zh: 'zh-CN',
+  my: 'my-MM',
+  am: 'am-ET',
+};
+
+export function getIntlLocale(lang: LanguageCode): string {
+  return LOCALE_MAP[lang] || lang || 'en';
+}
+
+export function formatLocalizedTime(
+  value: string | number | Date,
+  lang: LanguageCode,
+  options?: Intl.DateTimeFormatOptions
+): string {
+  try {
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value ?? '');
+    return new Intl.DateTimeFormat(getIntlLocale(lang), {
+      hour: '2-digit',
+      minute: '2-digit',
+      ...options,
+    }).format(date);
+  } catch {
+    return String(value ?? '');
+  }
+}
+
+export function formatLocalizedDate(
+  value: string | number | Date,
+  lang: LanguageCode,
+  options?: Intl.DateTimeFormatOptions
+): string {
+  try {
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value ?? '');
+    return new Intl.DateTimeFormat(getIntlLocale(lang), {
+      month: 'short',
+      day: 'numeric',
+      ...options,
+    }).format(date);
+  } catch {
+    return String(value ?? '');
+  }
+}
+
+export function formatLocalizedNumber(value: number, lang: LanguageCode): string {
+  try {
+    return new Intl.NumberFormat(getIntlLocale(lang)).format(value);
+  } catch {
+    return String(value);
+  }
+}
 
 interface LanguageContextType {
   language: LanguageCode;
@@ -1088,6 +1146,13 @@ const LanguageContext = createContext<LanguageContextType>({
   isRtl: false,
 });
 
+const syncDocumentLanguage = (lang: LanguageCode) => {
+  if (typeof document === 'undefined') return;
+  const langObj = SUPPORTED_LANGUAGES.find((l) => l.code === lang);
+  document.documentElement.setAttribute('lang', getIntlLocale(lang));
+  document.documentElement.setAttribute('dir', langObj?.isRtl ? 'rtl' : 'ltr');
+};
+
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [language, setLanguageState] = useState<LanguageCode>(() => {
     try {
@@ -1100,27 +1165,18 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
 
   const setLanguage = (lang: LanguageCode) => {
-    setLanguageState(lang);
+    const validLang = SUPPORTED_LANGUAGES.some((l) => l.code === lang) ? lang : 'en';
+    setLanguageState(validLang);
     try {
-      safeStorage.setItem('enmmoe_language', lang);
+      safeStorage.setItem('enmmoe_language', validLang);
     } catch {
       // ignore
     }
-    const langObj = SUPPORTED_LANGUAGES.find((l) => l.code === lang);
-    if (langObj?.isRtl) {
-      document.documentElement.setAttribute('dir', 'rtl');
-    } else {
-      document.documentElement.setAttribute('dir', 'ltr');
-    }
+    syncDocumentLanguage(validLang);
   };
 
   useEffect(() => {
-    const langObj = SUPPORTED_LANGUAGES.find((l) => l.code === language);
-    if (langObj?.isRtl) {
-      document.documentElement.setAttribute('dir', 'rtl');
-    } else {
-      document.documentElement.setAttribute('dir', 'ltr');
-    }
+    syncDocumentLanguage(language);
   }, [language]);
 
   const t = (key: string, defaultVal?: string): string => {

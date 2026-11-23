@@ -219,7 +219,7 @@ export const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, [navigate]);
 
   const openPulse = useCallback(() => {
-    navigate({ key: 'pulse', type: 'pulse', path: '/pulse', title: 'Pulse' });
+    navigate({ key: 'pulse', type: 'pulse', path: '/pulse', title: 'enmmoe+' });
   }, [navigate]);
 
   const openMessages = useCallback((conversationId?: string) => {

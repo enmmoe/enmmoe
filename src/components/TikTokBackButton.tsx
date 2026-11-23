@@ -1,5 +1,6 @@
 import React from 'react';
 import { ChevronLeft } from 'lucide-react';
+import { useLanguage } from '../utils/i18n';
 
 interface TikTokBackButtonProps {
   onClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
@@ -8,26 +9,36 @@ interface TikTokBackButtonProps {
   ariaLabel?: string;
   title?: string;
   id?: string;
-  label?: string;
+  label?: string | null;
 }
 
 export const TikTokBackButton: React.FC<TikTokBackButtonProps> = ({
   onClick,
   className = '',
-  ariaLabel = 'Back',
-  title = 'Back',
+  ariaLabel,
+  title,
   id,
   label,
-}) => (
-  <button
-    id={id}
-    type="button"
-    onClick={onClick}
-    aria-label={ariaLabel}
-    title={title}
-    className={`min-w-[44px] min-h-[44px] inline-flex items-center justify-center gap-0.5 px-1.5 rounded-xl bg-transparent text-[#007AFF] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] ios-press cursor-pointer select-none ${className}`}
-  >
-    <ChevronLeft className="w-[26px] h-[26px] stroke-[2.2] -ml-1" />
-    {label && <span className="text-[17px] font-normal leading-none pr-1">{label}</span>}
-  </button>
-);
+}) => {
+  const { t } = useLanguage();
+  const displayLabel = label === undefined ? t('back', 'Back') : label;
+  const resolvedAriaLabel = ariaLabel || displayLabel || 'Back';
+
+  return (
+    <button
+      id={id}
+      type="button"
+      onClick={onClick}
+      aria-label={resolvedAriaLabel}
+      title={title || resolvedAriaLabel}
+      className={`min-w-[44px] min-h-[44px] inline-flex items-center justify-center gap-0.5 px-1 text-[#007AFF] hover:opacity-70 ios-press cursor-pointer select-none transition-opacity ${className}`}
+    >
+      <ChevronLeft className="w-[24px] h-[24px] stroke-[2.2] -ml-1 shrink-0" />
+      {displayLabel && (
+        <span className="text-[17px] font-normal leading-none pr-1 whitespace-nowrap">
+          {displayLabel}
+        </span>
+      )}
+    </button>
+  );
+};

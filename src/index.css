@@ -238,11 +238,76 @@
   line-height: 1.1;
 }
 
-/* Home Header Script Wordmark */
+/* Centered App Wordmark */
 .enmmoe-wordmark {
-  font-family: "Parisienne", "Snell Roundhand", "Brush Script MT", cursive;
-  font-weight: 400;
+  font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+  font-weight: 700;
   font-style: normal;
   font-synthesis: none;
-  letter-spacing: 0.015em;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+/* 2D Korean Webtoon Sprite Motion */
+@keyframes webtoon-walk-bob {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-3px); }
+}
+@keyframes webtoon-idle-breathe {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-1.5px); }
+}
+@keyframes webtoon-leg-l {
+  0%, 100% { transform: rotate(-16deg); }
+  50% { transform: rotate(16deg); }
+}
+@keyframes webtoon-leg-r {
+  0%, 100% { transform: rotate(16deg); }
+  50% { transform: rotate(-16deg); }
+}
+@keyframes webtoon-arm-l {
+  0%, 100% { transform: rotate(14deg); }
+  50% { transform: rotate(-14deg); }
+}
+@keyframes webtoon-arm-r {
+  0%, 100% { transform: rotate(-14deg); }
+  50% { transform: rotate(14deg); }
+}
+@keyframes webtoon-hair-sway {
+  0%, 100% { transform: skewX(-2deg); }
+  50% { transform: skewX(2.5deg); }
+}
+
+.webtoon-walk-bob {
+  animation: webtoon-walk-bob 0.36s steps(4) infinite;
+}
+.webtoon-idle-breathe {
+  animation: webtoon-idle-breathe 2.4s ease-in-out infinite;
+}
+.webtoon-leg-left {
+  animation: webtoon-leg-l 0.45s ease-in-out infinite;
+}
+.webtoon-leg-right {
+  animation: webtoon-leg-r 0.45s ease-in-out infinite;
+}
+.webtoon-arm-left {
+  animation: webtoon-arm-l 0.45s ease-in-out infinite;
+}
+.webtoon-arm-right {
+  animation: webtoon-arm-r 0.45s ease-in-out infinite;
+}
+.webtoon-hair-sway {
+  animation: webtoon-hair-sway 0.45s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .webtoon-walk-bob,
+  .webtoon-idle-breathe,
+  .webtoon-leg-left,
+  .webtoon-leg-right,
+  .webtoon-arm-left,
+  .webtoon-arm-right,
+  .webtoon-hair-sway {
+    animation: none;
+  }
 }

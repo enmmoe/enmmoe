@@ -38,6 +38,11 @@ export const Avatar: React.FC<AvatarProps> = ({
   const [imgError, setImgError] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
+  React.useEffect(() => {
+    setImgError(false);
+    setLoaded(false);
+  }, [src]);
+
   const initials = name
     .split(' ')
     .filter(Boolean)
@@ -76,7 +81,7 @@ export const Avatar: React.FC<AvatarProps> = ({
       {isOnline && (
         <span
           aria-label="Online"
-          className={`absolute bottom-0 right-0 rounded-full bg-[#007AFF] border-white dark:border-black ${DOT_MAP[size]}`}
+          className={`absolute bottom-0 right-0 rounded-full bg-[#34C759] border-white dark:border-black ${DOT_MAP[size]}`}
         />
       )}
     </div>

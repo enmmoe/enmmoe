@@ -35,6 +35,7 @@ export const useToast = () => useContext(ToastContext);
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const timersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const recentToastRef = useRef<{ message: string; type: ToastType; at: number } | null>(null);
 
   const dismissToast = useCallback((id: string) => {
     if (timersRef.current[id]) {
@@ -54,11 +55,36 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         onAction?: () => void;
       }
     ) => {
-      const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const cleanMessage = message.trim();
+      if (!cleanMessage) return;
       const type = options?.type || 'info';
-      const durationMs = options?.durationMs ?? 2800;
+      const now = Date.now();
+      if (
+        recentToastRef.current &&
+        recentToastRef.current.message === cleanMessage &&
+        recentToastRef.current.type === type &&
+        now - recentToastRef.current.at < 1200
+      ) {
+        return;
+      }
+      recentToastRef.current = { message: cleanMessage, type, at: now };
 
-      setToasts((prev) => [...prev.slice(-2), { id, message, type, actionLabel: options?.actionLabel, onAction: options?.onAction }]);
+      const id = `toast-${now}-${Math.random().toString(36).slice(2, 6)}`;
+      const durationMs = options?.durationMs ?? 2600;
+
+      setToasts((prev) => {
+        const filtered = prev.filter((t) => t.message !== cleanMessage);
+        return [
+          ...filtered.slice(-1),
+          {
+            id,
+            message: cleanMessage,
+            type,
+            actionLabel: options?.actionLabel,
+            onAction: options?.onAction,
+          },
+        ];
+      });
 
       if (durationMs > 0) {
         timersRef.current[id] = setTimeout(() => {

@@ -88,17 +88,17 @@ export const LanguageScreen: React.FC<LanguageScreenProps> = ({ onBack }) => {
       dir={isRtl ? 'rtl' : 'ltr'}
       className="min-h-full w-full flex flex-col bg-[#F2F2F7] dark:bg-black text-black dark:text-white select-none"
     >
-      <header className="sticky top-0 z-30 bg-white/90 dark:bg-[#1C1C1E]/90 backdrop-blur-2xl border-b border-black/[0.08] dark:border-white/[0.1] pt-safe">
+      <header className="sticky top-0 z-30 bg-white/92 dark:bg-[#1C1C1E]/92 backdrop-blur-2xl pt-safe">
         <div className="max-w-2xl mx-auto h-12 px-2 flex items-center justify-between">
           <button
             id="btn-language-back"
             type="button"
             onClick={onBack}
-            className="min-w-[44px] min-h-[44px] inline-flex items-center gap-0.5 px-2 text-[#007AFF] cursor-pointer ios-press"
-            aria-label={t('cancel', 'Back')}
+            className="min-w-[44px] min-h-[44px] inline-flex items-center gap-0.5 px-2 text-[#007AFF] hover:opacity-70 transition-opacity cursor-pointer ios-press"
+            aria-label={t('back', 'Back')}
           >
             <ChevronLeft className="w-6 h-6 stroke-[2.2]" />
-            <span className="text-[17px]">{t('settings_title', 'Settings')}</span>
+            <span className="text-[17px]">{t('back', 'Back')}</span>
           </button>
 
           <h1 className="text-[17px] font-semibold tracking-tight">
@@ -112,7 +112,7 @@ export const LanguageScreen: React.FC<LanguageScreenProps> = ({ onBack }) => {
           <SearchBar
             value={searchQuery}
             onChange={setSearchQuery}
-            placeholder={t('search', 'Search languages')}
+            placeholder={t('search_language', 'Search languages')}
             showCancelOnFocus
             cancelLabel={t('cancel', 'Cancel')}
           />
@@ -124,13 +124,13 @@ export const LanguageScreen: React.FC<LanguageScreenProps> = ({ onBack }) => {
           filteredLanguages.length === 0 ? (
             <EmptyState
               icon={<Search className="w-6 h-6" />}
-              title={t('no_results', 'No languages found')}
-              description={`No language matches "${searchQuery}"`}
-              actionLabel="Clear Search"
+              title={t('search_language', 'Search languages')}
+              description={`"${searchQuery}"`}
+              actionLabel={t('clear_search', 'Clear Search')}
               onAction={() => setSearchQuery('')}
             />
           ) : (
-            <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl divide-y divide-black/[0.06] dark:divide-white/[0.08] overflow-hidden border border-black/[0.04] dark:border-white/[0.08]">
+            <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl divide-y divide-black/[0.06] dark:divide-white/[0.08] overflow-hidden">
               {filteredLanguages.map((lang) => renderRow(lang, 'search'))}
             </div>
           )
@@ -140,7 +140,7 @@ export const LanguageScreen: React.FC<LanguageScreenProps> = ({ onBack }) => {
               <h2 className="text-[13px] font-medium text-[#8E8E93] uppercase tracking-wider px-4 mb-2">
                 {t('suggested_languages', 'Suggested')}
               </h2>
-              <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl divide-y divide-black/[0.06] dark:divide-white/[0.08] overflow-hidden border border-black/[0.04] dark:border-white/[0.08]">
+              <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl divide-y divide-black/[0.06] dark:divide-white/[0.08] overflow-hidden">
                 {suggestedLanguages.map((lang) => renderRow(lang, 'suggested'))}
               </div>
             </section>
@@ -149,7 +149,7 @@ export const LanguageScreen: React.FC<LanguageScreenProps> = ({ onBack }) => {
               <h2 className="text-[13px] font-medium text-[#8E8E93] uppercase tracking-wider px-4 mb-2">
                 {t('all_languages', 'All Languages')}
               </h2>
-              <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl divide-y divide-black/[0.06] dark:divide-white/[0.08] overflow-hidden border border-black/[0.04] dark:border-white/[0.08]">
+              <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl divide-y divide-black/[0.06] dark:divide-white/[0.08] overflow-hidden">
                 {allSortedLanguages.map((lang) => renderRow(lang, 'all'))}
               </div>
             </section>

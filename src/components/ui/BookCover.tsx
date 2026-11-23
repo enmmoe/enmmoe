@@ -27,12 +27,12 @@ export const BookCover: React.FC<BookCoverProps> = ({
     onClick={onClick}
     className={`group text-left flex flex-col cursor-pointer ios-press focus-visible:outline-none ${className}`}
   >
-    <div className="relative w-full aspect-[3/4] rounded-2xl overflow-hidden bg-[#F2F2F7] dark:bg-[#1C1C1E] border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_10px_rgba(0,0,0,0.05)] mb-2">
+    <div className="relative w-full aspect-[3/4] rounded-[14px] overflow-hidden bg-[#F2F2F7] dark:bg-[#1C1C1E] mb-2">
       <SmartImage
         src={coverImage}
         alt={title}
         aspectClassName="w-full h-full"
-        className="transition-transform duration-300 ease-out group-hover:scale-[1.03]"
+        className="object-cover object-[center_14%] transition-transform duration-300 ease-out group-hover:scale-[1.03]"
         fallbackText={title}
       />
 
@@ -43,17 +43,20 @@ export const BookCover: React.FC<BookCoverProps> = ({
       )}
 
       {typeof progressPercent === 'number' && progressPercent > 0 && (
-        <div className="absolute bottom-2 inset-x-2">
-          <ProgressBar value={progressPercent} heightClass="h-1" className="bg-black/40" />
+        <div className="absolute inset-x-0 bottom-0 h-[3px] bg-white/30 pointer-events-none">
+          <div
+            className="h-full bg-[#007AFF] transition-all duration-300"
+            style={{ width: `${Math.min(100, Math.max(4, progressPercent))}%` }}
+          />
         </div>
       )}
     </div>
 
-    <h3 className="text-[15px] font-semibold text-black dark:text-white truncate w-full leading-snug group-hover:text-[#007AFF] transition-colors">
+    <h3 className="text-[15px] font-semibold text-black dark:text-white line-clamp-1 w-full leading-snug group-hover:text-[#007AFF] transition-colors">
       {title}
     </h3>
     {subtitle && (
-      <p className="text-[13px] text-[#8E8E93] truncate w-full mt-0.5 leading-tight">
+      <p className="text-[13px] text-[#8E8E93] truncate w-full mt-0.5 leading-tight tabular-nums">
         {subtitle}
       </p>
     )}

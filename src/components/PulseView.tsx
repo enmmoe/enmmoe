@@ -2,37 +2,32 @@ import React, { useState, useEffect, Suspense } from 'react';
 import {
   Bookmark,
   Camera,
-  Check,
-  ChevronRight,
-  Compass,
+  ExternalLink,
+  Gamepad2,
   Heart,
-  MapPin,
+  Image as ImageIcon,
   MessageCircle,
   Plus,
   Repeat2,
+  Share2,
   Sliders,
   UserCheck,
-  Wallet,
+  X,
 } from 'lucide-react';
 import { ReactionType, SocialPost, Story, User } from '../types';
-import {
-  CharacterConfig,
-  SavedStudioPhoto,
-  WORLD_DISTRICTS,
-  WalletState,
-} from '../types/characterStudio';
-import {
-  getActiveCharacterId,
-  getSavedCharacters,
-  getSavedStudioPhotos,
-  getWalletState,
-  setActiveCharacterId,
-} from '../utils/characterStudioStorage';
-import { Avatar, Button, SmartImage, VerifiedBadge, useToast } from './ui';
+import { getAssetFromCache } from '../game/assetCache';
+import { LOCATION_META, loadGameSaveSync } from '../game/saveSystem';
+import { GameSaveState } from '../game/types';
+import { ALL_WEBTOONS } from '../data/webtoonData';
+import { useLanguage } from '../utils/i18n';
+import { EmojiText } from './AppleEmoji';
+import { Avatar, SmartImage, VerifiedBadge, useToast } from './ui';
+import { StoriesBar } from './StoriesBar';
+import { StoryAuthorGroup } from '../utils/storyMedia';
 
-const CharacterStudioModal = React.lazy(() =>
-  import('./studio/CharacterStudioModal').then((m) => ({
-    default: m.CharacterStudioModal,
+const WebtoonGameModal = React.lazy(() =>
+  import('../game/WebtoonGameModal').then((m) => ({
+    default: m.WebtoonGameModal,
   }))
 );
 
@@ -44,7 +39,11 @@ export interface PulseViewProps {
   onPublishStory?: (storyData: Partial<Story>) => void;
   onPublishPost?: (postData: Partial<SocialPost>) => void;
   onOpenStory?: (storyIndex: number) => void;
+  onOpenAuthorStory?: (authorId: string, group?: StoryAuthorGroup) => void;
   onOpenCreate?: () => void;
+  onOpenCreateStory?: () => void;
+  onOpenNotifications?: () => void;
+  unreadNotificationsCount?: number;
   onReactPost?: (postId: string, reaction: ReactionType) => void;
   onOpenComments?: (postId: string) => void;
   onToggleSave?: (postId: string) => void;
@@ -67,7 +66,10 @@ export const PulseView: React.FC<PulseViewProps> = ({
   onPublishStory,
   onPublishPost,
   onOpenStory,
+  onOpenAuthorStory,
   onOpenCreate,
+  onOpenCreateStory,
+  onOpenNotifications,
   onReactPost,
   onOpenComments,
   onToggleSave,
@@ -75,50 +77,84 @@ export const PulseView: React.FC<PulseViewProps> = ({
   onVotePoll,
   onOpenUserProfile,
 }) => {
+  const { t } = useLanguage();
   const { showToast } = useToast();
 
+  // X-style inline post composer state
+  const [composerText, setComposerText] = useState('');
+  const [composerMediaUrl, setComposerMediaUrl] = useState('');
+  const [showMediaTray, setShowMediaTray] = useState<'none' | 'artwork' | 'studio'>('none');
+
+  // 2D Webtoon Game modal state
   const [studioOpen, setStudioOpen] = useState(false);
   const [studioInitialMode, setStudioInitialMode] = useState<'creator' | 'explore' | 'studio'>('explore');
 
-  const [savedCharacters, setSavedCharacters] = useState<CharacterConfig[]>(() =>
-    getSavedCharacters()
+  const [gameSave, setGameSave] = useState<GameSaveState>(
+    () => loadGameSaveSync(currentUser.name).state
   );
-  const [activeCharId, setActiveCharId] = useState<string>(() => getActiveCharacterId());
-  const [recentPhotos, setRecentPhotos] = useState<SavedStudioPhoto[]>(() =>
-    getSavedStudioPhotos().slice(0, 10)
-  );
-  const [wallet, setWallet] = useState<WalletState>(() => getWalletState());
+  const [recentPhotos, setRecentPhotos] = useState<
+    Array<{ id: string; title: string; locationName: string; imageDataUrl: string }>
+  >([]);
 
   const refreshStudioData = () => {
-    setSavedCharacters(getSavedCharacters());
-    setActiveCharId(getActiveCharacterId());
-    setRecentPhotos(getSavedStudioPhotos().slice(0, 10));
-    setWallet(getWalletState());
+    const loaded = loadGameSaveSync(currentUser.name).state;
+    setGameSave(loaded);
+    const items = loaded.studioGallery.slice(0, 12);
+    Promise.all(
+      items.map(async (item) => {
+        const rec = await getAssetFromCache(item.assetId);
+        return {
+          id: item.id,
+          title: item.title,
+          locationName: LOCATION_META[item.backgroundId]?.name || 'Seoul',
+          imageDataUrl: rec?.dataUrl || '',
+        };
+      })
+    ).then((rows) => {
+      setRecentPhotos(rows.filter((r) => Boolean(r.imageDataUrl)));
+    });
   };
 
   useEffect(() => {
     refreshStudioData();
-  }, [currentUser.avatar]);
+  }, [currentUser.avatar, posts.length]);
 
-  const activeCharacter =
-    savedCharacters.find((c) => c.id === activeCharId) || savedCharacters[0];
-  const latestPhoto = recentPhotos.find((p) => p.characterId === activeCharacter?.id) || recentPhotos[0];
-
-  const handleLaunchStudio = (
-    mode: 'creator' | 'explore' | 'studio',
-    charId?: string
-  ) => {
-    if (charId) {
-      setActiveCharacterId(charId);
-      setActiveCharId(charId);
-    }
+  const handleLaunchStudio = (mode: 'creator' | 'explore' | 'studio') => {
     setStudioInitialMode(mode);
     setStudioOpen(true);
   };
 
-  const handleEquipPhotoAsAvatar = (photo: SavedStudioPhoto) => {
+  const handleEquipPhotoAsAvatar = (photo: { imageDataUrl: string }) => {
     onUpdateUser({ avatar: photo.imageDataUrl });
-    showToast('Profile icon updated from Studio', { type: 'success' });
+    showToast('Profile picture updated from Studio', { type: 'success' });
+  };
+
+  const handleShareStudioPhoto = (photo: { title: string; locationName: string; imageDataUrl: string }) => {
+    if (!onPublishPost) return;
+    onPublishPost({
+      content: `${photo.title} in ${photo.locationName}`,
+      mediaType: 'photo',
+      mediaUrls: [photo.imageDataUrl],
+      location: photo.locationName,
+      tags: ['enmmoe', 'webtoonlife', 'seoul'],
+    });
+    showToast('Shared game photo to enmmoe+', { type: 'success' });
+  };
+
+  const handlePublishInlinePost = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = composerText.trim();
+    if (!trimmed && !composerMediaUrl) return;
+    onPublishPost?.({
+      content: trimmed,
+      mediaType: composerMediaUrl ? 'photo' : 'text',
+      mediaUrls: composerMediaUrl ? [composerMediaUrl] : [],
+      tags: ['enmmoe'],
+    });
+    setComposerText('');
+    setComposerMediaUrl('');
+    setShowMediaTray('none');
+    showToast(t('status_updated', 'Posted to enmmoe+'), { type: 'success', durationMs: 1800 });
   };
 
   const formatRelativeTime = (ts: number) => {
@@ -129,531 +165,562 @@ export const PulseView: React.FC<PulseViewProps> = ({
     return `${Math.floor(hours / 24)}d`;
   };
 
+  const quickArtworkPool = ALL_WEBTOONS.slice(0, 6).map((w) => w.coverImage);
+
   return (
     <div
       id="enmmoe-pulse-view"
-      className="w-full min-h-full bg-white dark:bg-black text-black dark:text-white pb-10 select-none"
+      className="w-full bg-white dark:bg-black text-black dark:text-white pb-12 select-none"
     >
-      {/* iOS Sticky Header */}
-      <header className="sticky top-0 z-30 bg-white/92 dark:bg-black/92 backdrop-blur-2xl border-b border-black/[0.06] dark:border-white/[0.08] pt-safe">
-        <div className="h-[52px] px-4 flex items-center justify-between gap-3">
-          <h1 className="text-[28px] font-bold tracking-tight leading-none text-black dark:text-white">
-            Pulse
+      {/* Shared Borderless App Header (Game Entry — Centered enmmoe Wordmark — Notifications) */}
+      <header
+        id="enmmoe-plus-top-bar"
+        className="sticky top-0 z-30 bg-white dark:bg-black pt-safe"
+      >
+        <div className="h-[48px] px-4 grid grid-cols-[1fr_auto_1fr] items-center">
+          {/* Far Left: iPhone-style Game Icon for Pulse 3D World / Character Experience */}
+          <button
+            id="enmmoe-plus-game-btn"
+            type="button"
+            onClick={() => handleLaunchStudio('explore')}
+            aria-label="Open 3D World & Game"
+            title="Seoul 3D World & Game"
+            className="justify-self-start min-w-[44px] min-h-[44px] -ml-2.5 flex items-center justify-center text-black dark:text-white bg-transparent border-0 p-0 cursor-pointer active:opacity-50 transition-opacity focus-visible:outline-none"
+          >
+            <Gamepad2 className="w-[22px] h-[22px] stroke-[1.8]" aria-hidden="true" />
+          </button>
+
+          {/* Centered Clean Wordmark (Identical to Home) */}
+          <h1
+            aria-label="enmmoe"
+            className="enmmoe-wordmark justify-self-center text-[25px] sm:text-[27px] font-bold leading-none lowercase text-[#000000] dark:text-[#FFFFFF] select-none pointer-events-none"
+          >
+            enmmoe
           </h1>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => handleLaunchStudio('explore')}
-              className="min-h-[36px] px-3 rounded-xl bg-[#F2F2F7] dark:bg-[#1C1C1E] text-[13px] font-semibold text-black dark:text-white inline-flex items-center gap-1.5 tabular-nums cursor-pointer ios-press"
-              aria-label="Seoul World balance"
-            >
-              <Wallet className="w-4 h-4 text-[#007AFF] stroke-[1.9]" />
-              <span>₩{wallet.balance.toLocaleString()}</span>
-            </button>
-
-            {onOpenCreate && (
-              <button
-                id="pulse-create-btn"
-                type="button"
-                onClick={onOpenCreate}
-                aria-label="Create post or story"
-                className="min-w-[40px] min-h-[40px] flex items-center justify-center text-black dark:text-white cursor-pointer active:opacity-55 transition-opacity"
-              >
-                <Plus className="w-[22px] h-[22px] stroke-[1.85]" />
-              </button>
-            )}
-          </div>
+          {/* Far Right: Clean Outline Heart (Identical to Home) */}
+          <button
+            id="enmmoe-plus-activity-btn"
+            type="button"
+            onClick={onOpenNotifications}
+            aria-label={t('notifications_title', 'Activity & Notifications')}
+            className="justify-self-end min-w-[44px] min-h-[44px] -mr-2.5 flex items-center justify-center text-black dark:text-white bg-transparent border-0 p-0 cursor-pointer active:opacity-50 transition-opacity focus-visible:outline-none"
+          >
+            <Heart className="w-[22px] h-[22px] stroke-[1.8]" aria-hidden="true" />
+          </button>
         </div>
       </header>
 
-      <div className="max-w-3xl mx-auto px-4 pt-4 space-y-7">
-        {/* Primary 3D Character & Seoul World Destination Card */}
-        <section aria-label="Character & Seoul World">
-          <div
-            id="pulse-character-hero"
-            className="rounded-[24px] bg-[#F2F2F7] dark:bg-[#1C1C1E] border border-black/[0.05] dark:border-white/[0.08] p-4 sm:p-5 space-y-4"
-          >
-            <div className="flex items-center gap-4">
-              {/* Character Portrait / Avatar Frame */}
-              <button
-                type="button"
-                onClick={() => handleLaunchStudio('creator')}
-                aria-label="Open Character Creator"
-                className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-[20px] overflow-hidden bg-white dark:bg-[#2C2C2E] border border-black/[0.06] dark:border-white/[0.1] shrink-0 flex items-center justify-center cursor-pointer ios-press"
-              >
-                {latestPhoto ? (
-                  <img
-                    src={latestPhoto.imageDataUrl}
-                    alt={activeCharacter?.name || 'Character portrait'}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="flex flex-col items-center justify-center gap-1.5">
-                    <div
-                      className="w-9 h-9 rounded-full border border-black/15"
-                      style={{ backgroundColor: activeCharacter?.skinTone || '#E9C3AC' }}
-                    />
-                    <div className="flex items-center gap-1">
-                      <span
-                        className="w-3.5 h-2 rounded-sm"
-                        style={{ backgroundColor: activeCharacter?.primaryOutfitColor || '#495867' }}
-                      />
-                      <span
-                        className="w-3.5 h-2 rounded-sm"
-                        style={{ backgroundColor: activeCharacter?.secondaryOutfitColor || '#1B1C20' }}
-                      />
-                    </div>
-                  </div>
-                )}
-              </button>
+      <div className="max-w-2xl mx-auto">
+        {/* 1. Stories Row (Moved from Home, full story creation/view/privacy preserved) */}
+        <StoriesBar
+          currentUser={currentUser}
+          stories={stories}
+          onOpenAuthorStory={(authorId, group) => {
+            if (onOpenAuthorStory) {
+              onOpenAuthorStory(authorId, group);
+            } else if (onOpenStory && group.stories[0]) {
+              const idx = stories.findIndex((s) => s.id === group.stories[0].id);
+              if (idx >= 0) onOpenStory(idx);
+            }
+          }}
+          onOpenCreateStory={() => {
+            if (onOpenCreateStory) onOpenCreateStory();
+            else if (onOpenCreate) onOpenCreate();
+          }}
+          className="pt-0.5 pb-2"
+        />
 
-              <div className="flex-1 min-w-0">
-                <p className="text-[12px] font-semibold text-[#007AFF] uppercase tracking-wider">
-                  Seoul 3D Experience
-                </p>
-                <h2 className="text-[22px] font-bold tracking-tight text-black dark:text-white truncate mt-0.5">
-                  {activeCharacter?.name || 'Seo-yeon'}
-                </h2>
-                <p className="text-[14px] text-[#8E8E93] mt-0.5 leading-snug">
-                  {activeCharacter?.frame === 'male' ? 'Male' : 'Female'} ·{' '}
-                  {wallet.discoveredDistricts.length}/{WORLD_DISTRICTS.length} districts ·{' '}
-                  {wallet.photosTaken} photos
-                </p>
+        {/* 2. X-Style Text & Media Post Composer */}
+        <form
+          id="enmmoe-plus-composer"
+          onSubmit={handlePublishInlinePost}
+          className="px-4 py-3.5 border-t border-b border-black/[0.06] dark:border-white/[0.08]"
+        >
+          <div className="flex items-start gap-3">
+            <button
+              type="button"
+              onClick={() => onOpenUserProfile?.(currentUser)}
+              aria-label={currentUser.name}
+              className="shrink-0 cursor-pointer ios-press bg-transparent border-0 p-0"
+            >
+              <Avatar src={currentUser.avatar} name={currentUser.name} size="sm" />
+            </button>
+
+            <div className="flex-1 min-w-0">
+              <textarea
+                id="enmmoe-plus-composer-input"
+                value={composerText}
+                onChange={(e) => setComposerText(e.target.value)}
+                placeholder={t('whats_on_your_mind', "What's happening?")}
+                rows={2}
+                className="w-full bg-transparent border-0 text-[16px] leading-snug text-black dark:text-white placeholder:text-[#8E8E93] resize-none outline-none select-text"
+              />
+
+              {composerMediaUrl && (
+                <div className="relative mt-2 mb-3 rounded-2xl overflow-hidden bg-[#F2F2F7] dark:bg-[#1C1C1E] max-h-64">
+                  <img
+                    src={composerMediaUrl}
+                    alt="Attachment preview"
+                    className="w-full max-h-64 object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setComposerMediaUrl('')}
+                    aria-label="Remove image"
+                    className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/70 text-white flex items-center justify-center cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+
+              {showMediaTray === 'artwork' && (
+                <div
+                  style={{ touchAction: 'pan-x pan-y', overscrollBehaviorX: 'contain' }}
+                  className="flex items-center gap-2 overflow-x-auto no-scrollbar py-2"
+                >
+                  {quickArtworkPool.map((url, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        setComposerMediaUrl(url);
+                        setShowMediaTray('none');
+                      }}
+                      className="w-14 h-14 rounded-xl overflow-hidden shrink-0 cursor-pointer ios-press"
+                    >
+                      <SmartImage src={url} alt={`Media ${idx + 1}`} aspectClassName="w-full h-full" />
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {showMediaTray === 'studio' && (
+                <div className="py-2">
+                  {recentPhotos.length === 0 ? (
+                    <div className="flex items-center justify-between py-1">
+                      <span className="text-[13px] text-[#8E8E93]">
+                        No game captures saved yet.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleLaunchStudio('studio')}
+                        className="text-[13px] font-semibold text-[#007AFF] cursor-pointer"
+                      >
+                        Open Photo Studio
+                      </button>
+                    </div>
+                  ) : (
+                    <div
+                      style={{ touchAction: 'pan-x pan-y', overscrollBehaviorX: 'contain' }}
+                      className="flex items-center gap-2 overflow-x-auto no-scrollbar"
+                    >
+                      {recentPhotos.map((photo) => (
+                        <button
+                          key={photo.id}
+                          type="button"
+                          onClick={() => {
+                            setComposerMediaUrl(photo.imageDataUrl);
+                            if (!composerText.trim()) {
+                              setComposerText(`${photo.title} in ${photo.locationName}`);
+                            }
+                            setShowMediaTray('none');
+                          }}
+                          className="w-14 h-14 rounded-xl overflow-hidden shrink-0 cursor-pointer ios-press"
+                        >
+                          <img
+                            src={photo.imageDataUrl}
+                            alt={photo.title}
+                            className="w-full h-full object-cover"
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between pt-2">
+                <div className="flex items-center gap-1 -ml-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShowMediaTray((prev) => (prev === 'artwork' ? 'none' : 'artwork'))
+                    }
+                    aria-label="Attach photo"
+                    className={`min-w-[38px] min-h-[38px] flex items-center justify-center rounded-full cursor-pointer transition-colors ${
+                      showMediaTray === 'artwork'
+                        ? 'text-[#007AFF]'
+                        : 'text-[#8E8E93] hover:text-[#007AFF]'
+                    }`}
+                  >
+                    <ImageIcon className="w-[19px] h-[19px] stroke-[1.85]" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShowMediaTray((prev) => (prev === 'studio' ? 'none' : 'studio'))
+                    }
+                    aria-label="Attach game capture"
+                    title="Attach 3D Game Photo"
+                    className={`min-w-[38px] min-h-[38px] flex items-center justify-center rounded-full cursor-pointer transition-colors ${
+                      showMediaTray === 'studio'
+                        ? 'text-[#007AFF]'
+                        : 'text-[#8E8E93] hover:text-[#007AFF]'
+                    }`}
+                  >
+                    <Camera className="w-[19px] h-[19px] stroke-[1.85]" />
+                  </button>
+
+                  {onOpenCreate && (
+                    <button
+                      id="pulse-create-btn"
+                      type="button"
+                      onClick={onOpenCreate}
+                      aria-label="More post options"
+                      title="Poll, Link or Story"
+                      className="min-w-[38px] min-h-[38px] flex items-center justify-center text-[#8E8E93] hover:text-[#007AFF] cursor-pointer"
+                    >
+                      <Plus className="w-[19px] h-[19px] stroke-[1.85]" />
+                    </button>
+                  )}
+                </div>
+
+                <button
+                  id="enmmoe-plus-post-submit"
+                  type="submit"
+                  disabled={!composerText.trim() && !composerMediaUrl}
+                  className="h-8 px-4 rounded-full bg-[#007AFF] text-white text-[14px] font-semibold cursor-pointer ios-press disabled:opacity-40"
+                >
+                  {t('post', 'Post')}
+                </button>
               </div>
             </div>
+          </div>
+        </form>
 
-            {/* Primary CTA: Enter Seoul World */}
-            <Button
+        {/* 3. Shared Photos / Game Captures & Pulse Quick Launch */}
+        <section
+          aria-label="Game & Shared Studio Media"
+          className="px-4 py-3.5 border-b border-black/[0.06] dark:border-white/[0.08] space-y-3"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <button
               id="pulse-enter-world-btn"
-              variant="primary"
-              size="lg"
-              fullWidth
-              leftIcon={<Compass className="w-[18px] h-[18px] stroke-[2]" />}
+              type="button"
               onClick={() => handleLaunchStudio('explore')}
+              className="inline-flex items-center gap-2 text-[15px] font-semibold text-black dark:text-white cursor-pointer ios-press"
             >
-              Enter Seoul 3D World
-            </Button>
+              <Gamepad2 className="w-[18px] h-[18px] text-[#007AFF] stroke-[1.9]" />
+              <span>Seoul Webtoon Life</span>
+              <span className="text-[13px] font-medium text-[#8E8E93] tabular-nums">
+                · ₩{gameSave.money.toLocaleString()}
+              </span>
+            </button>
 
-            {/* Secondary Character & Studio Actions */}
-            <div className="grid grid-cols-2 gap-2.5">
+            <div className="flex items-center gap-4 text-[14px] font-medium">
               <button
                 id="pulse-open-creator-btn"
                 type="button"
                 onClick={() => handleLaunchStudio('creator')}
-                className="min-h-[44px] px-3.5 rounded-2xl bg-white dark:bg-[#2C2C2E] text-black dark:text-white text-[15px] font-semibold flex items-center justify-center gap-2 border border-black/[0.05] dark:border-white/[0.08] cursor-pointer ios-press"
+                className="inline-flex items-center gap-1 text-[#007AFF] cursor-pointer ios-press"
               >
-                <Sliders className="w-4 h-4 text-[#007AFF] stroke-[2]" />
-                <span>Customize</span>
+                <Sliders className="w-3.5 h-3.5" />
+                <span>Character</span>
               </button>
-
               <button
                 id="pulse-open-studio-btn"
                 type="button"
                 onClick={() => handleLaunchStudio('studio')}
-                className="min-h-[44px] px-3.5 rounded-2xl bg-white dark:bg-[#2C2C2E] text-black dark:text-white text-[15px] font-semibold flex items-center justify-center gap-2 border border-black/[0.05] dark:border-white/[0.08] cursor-pointer ios-press"
+                className="inline-flex items-center gap-1 text-[#007AFF] cursor-pointer ios-press"
               >
-                <Camera className="w-4 h-4 text-[#007AFF] stroke-[2]" />
-                <span>Photo Studio</span>
+                <Camera className="w-3.5 h-3.5" />
+                <span>Studio</span>
               </button>
             </div>
-
-            {/* Saved Character Quick Switcher */}
-            {savedCharacters.length > 0 && (
-              <div className="pt-1 border-t border-black/[0.06] dark:border-white/[0.08] space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-[13px] font-medium text-[#8E8E93]">
-                    Your Characters
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => handleLaunchStudio('creator')}
-                    className="text-[13px] font-semibold text-[#007AFF] cursor-pointer"
-                  >
-                    Manage
-                  </button>
-                </div>
-
-                <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-0.5">
-                  {savedCharacters.map((char) => {
-                    const isCurrent = char.id === activeCharacter?.id;
-                    return (
-                      <button
-                        key={char.id}
-                        type="button"
-                        onClick={() => handleLaunchStudio('creator', char.id)}
-                        className={`min-h-[38px] px-3 rounded-xl text-[13px] font-semibold border flex items-center gap-2 shrink-0 cursor-pointer ios-press ${
-                          isCurrent
-                            ? 'bg-[#007AFF]/12 border-[#007AFF] text-[#007AFF]'
-                            : 'bg-white dark:bg-[#2C2C2E] border-black/[0.06] dark:border-white/[0.08] text-black dark:text-white'
-                        }`}
-                      >
-                        <span
-                          className="w-3 h-3 rounded-full border border-black/15 shrink-0"
-                          style={{ backgroundColor: char.skinTone }}
-                        />
-                        <span>{char.name}</span>
-                        {isCurrent && <Check className="w-3.5 h-3.5 stroke-[2.5]" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
           </div>
-        </section>
 
-        {/* Seoul World Districts */}
-        <section aria-label="Seoul World Districts">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-[22px] font-semibold tracking-tight text-black dark:text-white">
-              Seoul Districts
-            </h2>
-            <button
-              type="button"
-              onClick={() => handleLaunchStudio('explore')}
-              className="inline-flex items-center gap-0.5 text-[15px] font-medium text-[#007AFF] cursor-pointer"
+          {recentPhotos.length > 0 && (
+            <div
+              style={{ touchAction: 'pan-x pan-y', overscrollBehaviorX: 'contain' }}
+              className="flex items-start gap-3 overflow-x-auto no-scrollbar pt-0.5"
             >
-              <span>Explore Map</span>
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-
-          <div className="flex items-stretch gap-3 overflow-x-auto no-scrollbar pb-1">
-            {WORLD_DISTRICTS.map((district) => {
-              const isDiscovered = wallet.discoveredDistricts.includes(district.id);
-              const isPhotoDistrict = district.id === 'photo_studio';
-              return (
-                <button
-                  key={district.id}
-                  type="button"
-                  onClick={() => handleLaunchStudio(isPhotoDistrict ? 'studio' : 'explore')}
-                  className="w-[210px] shrink-0 p-3.5 rounded-2xl bg-[#F2F2F7] dark:bg-[#1C1C1E] border border-black/[0.05] dark:border-white/[0.08] text-left flex flex-col justify-between gap-2.5 cursor-pointer ios-press"
-                >
-                  <div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[12px] font-medium text-[#8E8E93] truncate">
-                        {district.koreanName}
-                      </span>
-                      <MapPin className="w-4 h-4 text-[#007AFF] shrink-0 stroke-[1.9]" />
-                    </div>
-                    <p className="text-[16px] font-semibold text-black dark:text-white leading-snug mt-1">
-                      {district.name}
-                    </p>
-                    <p className="text-[13px] text-[#8E8E93] line-clamp-2 mt-1 leading-snug">
-                      {district.subtitle}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center justify-between text-[12px] font-semibold pt-1 border-t border-black/[0.06] dark:border-white/[0.08]">
-                    <span className={isDiscovered ? 'text-[#007AFF]' : 'text-[#8E8E93]'}>
-                      {isDiscovered ? 'Unlocked' : 'Discover'}
-                    </span>
-                    <span className="text-[#8E8E93] tabular-nums">
-                      {district.travelCost === 0 ? 'Free' : `₩${district.travelCost.toLocaleString()}`}
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* Studio Captures Gallery */}
-        {recentPhotos.length > 0 && (
-          <section aria-label="Studio Captures">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <h2 className="text-[22px] font-semibold tracking-tight text-black dark:text-white">
-                  Studio Captures
-                </h2>
-                <p className="text-[13px] text-[#8E8E93]">
-                  Tap any shot to set as your enmmoe avatar
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleLaunchStudio('studio')}
-                className="text-[15px] font-medium text-[#007AFF] cursor-pointer"
-              >
-                Open Studio
-              </button>
-            </div>
-
-            <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-1">
               {recentPhotos.map((photo) => {
                 const isSelected = currentUser.avatar === photo.imageDataUrl;
                 return (
-                  <button
+                  <div
                     key={photo.id}
-                    type="button"
-                    onClick={() => handleEquipPhotoAsAvatar(photo)}
-                    className={`relative w-24 h-28 rounded-2xl overflow-hidden shrink-0 cursor-pointer transition-all ios-press ${
-                      isSelected
-                        ? 'ring-2 ring-[#007AFF]'
-                        : 'ring-1 ring-black/[0.08] dark:ring-white/[0.1]'
-                    }`}
+                    className="w-[116px] shrink-0 flex flex-col gap-1.5"
                   >
-                    <img
-                      src={photo.imageDataUrl}
-                      alt={photo.characterName}
-                      className="w-full h-full object-cover"
-                    />
-                    {isSelected && (
-                      <span className="absolute bottom-1.5 right-1.5 w-6 h-6 rounded-full bg-[#007AFF] text-white flex items-center justify-center shadow-sm">
-                        <UserCheck className="w-3.5 h-3.5" />
+                    <button
+                      type="button"
+                      onClick={() => handleEquipPhotoAsAvatar(photo)}
+                      className="relative w-full aspect-[3/4] rounded-2xl overflow-hidden bg-[#F2F2F7] dark:bg-[#1C1C1E] cursor-pointer ios-press"
+                    >
+                      <img
+                        src={photo.imageDataUrl}
+                        alt={photo.title}
+                        className="w-full h-full object-cover"
+                      />
+                      {isSelected && (
+                        <span className="absolute bottom-1.5 right-1.5 w-6 h-6 rounded-full bg-[#007AFF] text-white flex items-center justify-center shadow-sm">
+                          <UserCheck className="w-3.5 h-3.5" />
+                        </span>
+                      )}
+                    </button>
+
+                    <div className="flex items-center justify-between px-0.5">
+                      <span className="text-[12px] text-[#8E8E93] truncate">
+                        {photo.locationName}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleShareStudioPhoto(photo)}
+                        aria-label="Share game photo to enmmoe+"
+                        className="inline-flex items-center gap-1 text-[12px] font-semibold text-[#007AFF] shrink-0 cursor-pointer"
+                      >
+                        <Share2 className="w-3 h-3" />
+                        <span>Share</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* 4 & 5. Unified Clean Vertical Feed (Text Posts, Media Posts, Game Shares, Community Content) */}
+        <section aria-label="enmmoe+ Feed" className="divide-y divide-black/[0.06] dark:divide-white/[0.08]">
+          {posts.map((post) => {
+            const isLiked = Boolean(post.userReaction);
+            const mediaList = post.mediaUrls || [];
+            return (
+              <article
+                key={post.id}
+                className="px-4 py-4 flex items-start gap-3"
+              >
+                <button
+                  type="button"
+                  onClick={() =>
+                    onOpenUserProfile?.({
+                      id: post.authorId,
+                      name: post.authorName,
+                      username: post.authorUsername,
+                      avatar: post.authorAvatar,
+                      isVerified: post.authorVerified,
+                    })
+                  }
+                  aria-label={post.authorName}
+                  className="shrink-0 cursor-pointer ios-press"
+                >
+                  <Avatar src={post.authorAvatar} name={post.authorName} size="sm" />
+                </button>
+
+                <div className="flex-1 min-w-0 space-y-2.5">
+                  {/* Author Header Line */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onOpenUserProfile?.({
+                        id: post.authorId,
+                        name: post.authorName,
+                        username: post.authorUsername,
+                        avatar: post.authorAvatar,
+                        isVerified: post.authorVerified,
+                      })
+                    }
+                    className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-left cursor-pointer"
+                  >
+                    <span className="text-[15px] font-semibold text-black dark:text-white truncate">
+                      {post.authorName}
+                    </span>
+                    {post.authorVerified && <VerifiedBadge size={14} />}
+                    <span className="text-[14px] text-[#8E8E93] truncate">
+                      @{post.authorUsername}
+                    </span>
+                    <span className="text-[14px] text-[#8E8E93]">
+                      · {formatRelativeTime(post.createdAt)}
+                    </span>
+                    {post.location && (
+                      <span className="text-[13px] text-[#8E8E93] truncate">
+                        · {post.location}
                       </span>
                     )}
                   </button>
-                );
-              })}
-            </div>
-          </section>
-        )}
 
-        {/* Active Stories Strip */}
-        {stories.length > 0 && (
-          <section aria-label="Community Stories">
-            <div className="flex items-center justify-between mb-2.5">
-              <h2 className="text-[22px] font-semibold tracking-tight text-black dark:text-white">
-                Stories
-              </h2>
-              <button
-                type="button"
-                onClick={() => handleLaunchStudio('studio')}
-                className="text-[14px] font-medium text-[#007AFF] cursor-pointer"
-              >
-                Shoot 3D Story
-              </button>
-            </div>
+                  {/* Text Content */}
+                  {post.content && (
+                    <p className="text-[15px] leading-[1.45] text-black dark:text-white break-words">
+                      <EmojiText text={post.content} />
+                    </p>
+                  )}
 
-            <div className="flex items-center gap-3.5 overflow-x-auto no-scrollbar py-1">
-              {onOpenCreate && (
-                <button
-                  type="button"
-                  onClick={onOpenCreate}
-                  className="flex flex-col items-center gap-1.5 shrink-0 w-16 cursor-pointer ios-press"
-                >
-                  <div className="relative">
-                    <Avatar src={currentUser.avatar} name={currentUser.name} size="md" className="w-14 h-14" />
-                    <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-[#007AFF] text-white flex items-center justify-center border-2 border-white dark:border-black">
-                      <Plus className="w-3 h-3 stroke-[3]" />
-                    </span>
-                  </div>
-                  <span className="text-[12px] text-[#8E8E93] truncate w-full text-center">
-                    Your Story
-                  </span>
-                </button>
-              )}
-
-              {stories.map((story, idx) => (
-                <button
-                  key={story.id}
-                  type="button"
-                  onClick={() => onOpenStory?.(idx)}
-                  className="flex flex-col items-center gap-1.5 shrink-0 w-16 cursor-pointer ios-press"
-                >
-                  <div
-                    className={`p-[2px] rounded-full ${
-                      story.isSeen
-                        ? 'bg-[#C7C7CC] dark:bg-[#3A3A3C]'
-                        : 'bg-[#007AFF]'
-                    }`}
-                  >
-                    <div className="p-[2px] rounded-full bg-white dark:bg-black">
-                      <Avatar
-                        src={story.authorAvatar}
-                        name={story.authorName}
-                        size="md"
-                        className="w-[52px] h-[52px]"
-                      />
-                    </div>
-                  </div>
-                  <span className="text-[12px] text-black/85 dark:text-white/85 truncate w-full text-center">
-                    {story.authorName.split(' ')[0]}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* Community Pulse Feed */}
-        {posts.length > 0 && (
-          <section aria-label="Community Pulse" className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-[22px] font-semibold tracking-tight text-black dark:text-white">
-                Community Pulse
-              </h2>
-              <span className="text-[13px] text-[#8E8E93] tabular-nums">
-                {posts.length} updates
-              </span>
-            </div>
-
-            <div className="space-y-3.5">
-              {posts.slice(0, 6).map((post) => {
-                const isLiked = Boolean(post.userReaction);
-                return (
-                  <article
-                    key={post.id}
-                    className="rounded-2xl bg-[#F2F2F7] dark:bg-[#1C1C1E] border border-black/[0.05] dark:border-white/[0.08] p-4 space-y-3"
-                  >
-                    {/* Author Row */}
-                    <div className="flex items-center justify-between gap-3">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          onOpenUserProfile?.({
-                            id: post.authorId,
-                            name: post.authorName,
-                            username: post.authorUsername,
-                            avatar: post.authorAvatar,
-                            isVerified: post.authorVerified,
-                          })
-                        }
-                        className="flex items-center gap-2.5 min-w-0 text-left cursor-pointer"
-                      >
-                        <Avatar src={post.authorAvatar} name={post.authorName} size="sm" />
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1">
-                            <span className="text-[15px] font-semibold truncate">
-                              {post.authorName}
-                            </span>
-                            {post.authorVerified && <VerifiedBadge size={14} />}
-                          </div>
-                          <p className="text-[12px] text-[#8E8E93] truncate">
-                            @{post.authorUsername} · {formatRelativeTime(post.createdAt)}
-                            {post.location ? ` · ${post.location}` : ''}
-                          </p>
-                        </div>
-                      </button>
-                    </div>
-
-                    {/* Content */}
-                    {post.content && (
-                      <p className="text-[15px] leading-relaxed text-black/90 dark:text-white/90">
-                        {post.content}
-                      </p>
-                    )}
-
-                    {/* Media */}
-                    {post.mediaUrls && post.mediaUrls.length > 0 && (
-                      <div className="rounded-xl overflow-hidden border border-black/[0.05] dark:border-white/[0.08]">
-                        <SmartImage
-                          src={post.mediaUrls[0]}
-                          alt={post.authorName}
-                          aspectClassName="aspect-[16/10] w-full"
-                        />
-                      </div>
-                    )}
-
-                    {/* Poll */}
-                    {post.poll && (
-                      <div className="space-y-2 pt-1">
-                        <p className="text-[14px] font-semibold">{post.poll.question}</p>
-                        <div className="space-y-1.5">
-                          {post.poll.options.map((opt) => {
-                            const voted = post.poll?.userVotedOptionId === opt.id;
-                            const pct = post.poll?.totalVotes
-                              ? Math.round((opt.votes / post.poll.totalVotes) * 100)
-                              : 0;
-                            return (
-                              <button
-                                key={opt.id}
-                                type="button"
-                                onClick={() => onVotePoll?.(post.id, opt.id)}
-                                className={`w-full px-3 py-2 rounded-xl text-[13px] font-medium flex items-center justify-between border cursor-pointer ios-press ${
-                                  voted
-                                    ? 'bg-[#007AFF]/12 border-[#007AFF] text-[#007AFF]'
-                                    : 'bg-white dark:bg-[#2C2C2E] border-black/[0.05] dark:border-white/[0.08]'
-                                }`}
-                              >
-                                <span className="truncate">{opt.text}</span>
-                                <span className="tabular-nums text-[#8E8E93] ml-2">{pct}%</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Actions */}
-                    <div className="flex items-center justify-between pt-1 border-t border-black/[0.06] dark:border-white/[0.08]">
-                      <div className="flex items-center gap-4">
-                        <button
-                          type="button"
-                          onClick={() => onReactPost?.(post.id, 'love')}
-                          className={`min-h-[36px] inline-flex items-center gap-1.5 text-[13px] font-medium cursor-pointer ios-press ${
-                            isLiked ? 'text-[#007AFF]' : 'text-[#8E8E93]'
-                          }`}
+                  {/* Photo / Game Capture Media */}
+                  {mediaList.length > 0 && (
+                    <div
+                      className={`grid gap-1.5 ${
+                        mediaList.length > 1 ? 'grid-cols-2' : 'grid-cols-1'
+                      }`}
+                    >
+                      {mediaList.slice(0, 2).map((url, mIdx) => (
+                        <div
+                          key={mIdx}
+                          className="rounded-2xl overflow-hidden bg-[#F2F2F7] dark:bg-[#1C1C1E]"
                         >
-                          <Heart
-                            className={`w-[18px] h-[18px] stroke-[1.85] ${
-                              isLiked ? 'fill-current' : ''
-                            }`}
+                          <SmartImage
+                            src={url}
+                            alt={post.authorName}
+                            aspectClassName={
+                              mediaList.length > 1 ? 'aspect-square w-full' : 'aspect-[16/10] w-full'
+                            }
                           />
-                          <span className="tabular-nums">{post.likesCount}</span>
-                        </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
-                        <button
-                          type="button"
-                          onClick={() => onOpenComments?.(post.id)}
-                          className="min-h-[36px] inline-flex items-center gap-1.5 text-[13px] font-medium text-[#8E8E93] hover:text-black dark:hover:text-white cursor-pointer ios-press"
-                        >
-                          <MessageCircle className="w-[18px] h-[18px] stroke-[1.85]" />
-                          <span className="tabular-nums">{post.commentsCount}</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => onToggleRepost?.(post.id)}
-                          className={`min-h-[36px] inline-flex items-center gap-1.5 text-[13px] font-medium cursor-pointer ios-press ${
-                            post.isReposted ? 'text-[#007AFF]' : 'text-[#8E8E93]'
-                          }`}
-                        >
-                          <Repeat2 className="w-[18px] h-[18px] stroke-[1.85]" />
-                          <span className="tabular-nums">{post.sharesCount}</span>
-                        </button>
+                  {/* Link Preview */}
+                  {post.linkPreview && (
+                    <a
+                      href={post.linkPreview.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block rounded-2xl overflow-hidden bg-[#F2F2F7] dark:bg-[#1C1C1E] transition-opacity hover:opacity-90"
+                    >
+                      {post.linkPreview.image && (
+                        <SmartImage
+                          src={post.linkPreview.image}
+                          alt={post.linkPreview.title}
+                          aspectClassName="aspect-[16/9] w-full"
+                        />
+                      )}
+                      <div className="p-3 space-y-0.5">
+                        <p className="text-[12px] text-[#8E8E93] flex items-center gap-1">
+                          <span>{post.linkPreview.siteName || 'enmmoe'}</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </p>
+                        <p className="text-[15px] font-semibold text-black dark:text-white line-clamp-1">
+                          {post.linkPreview.title}
+                        </p>
+                        {post.linkPreview.description && (
+                          <p className="text-[13px] text-[#8E8E93] line-clamp-2">
+                            {post.linkPreview.description}
+                          </p>
+                        )}
                       </div>
+                    </a>
+                  )}
 
+                  {/* Poll */}
+                  {post.poll && (
+                    <div className="space-y-2 pt-0.5">
+                      <p className="text-[14px] font-semibold">{post.poll.question}</p>
+                      <div className="space-y-1.5">
+                        {post.poll.options.map((opt) => {
+                          const voted = post.poll?.userVotedOptionId === opt.id;
+                          const pct = post.poll?.totalVotes
+                            ? Math.round((opt.votes / post.poll.totalVotes) * 100)
+                            : 0;
+                          return (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => onVotePoll?.(post.id, opt.id)}
+                              className={`w-full px-3.5 py-2.5 rounded-xl text-[14px] font-medium flex items-center justify-between cursor-pointer ios-press ${
+                                voted
+                                  ? 'bg-[#007AFF]/12 text-[#007AFF] font-semibold'
+                                  : 'bg-[#F2F2F7] dark:bg-[#1C1C1E] text-black dark:text-white'
+                              }`}
+                            >
+                              <span className="truncate">{opt.text}</span>
+                              <span className="tabular-nums text-[#8E8E93] ml-2">{pct}%</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Post Action Row */}
+                  <div className="flex items-center justify-between pt-1 -ml-1.5">
+                    <div className="flex items-center gap-5">
                       <button
                         type="button"
-                        onClick={() => onToggleSave?.(post.id)}
-                        aria-label={post.isSaved ? 'Remove bookmark' : 'Save post'}
-                        className={`min-w-[36px] min-h-[36px] flex items-center justify-center cursor-pointer ios-press ${
-                          post.isSaved ? 'text-[#007AFF]' : 'text-[#8E8E93]'
+                        onClick={() => onReactPost?.(post.id, 'love')}
+                        className={`min-h-[36px] px-1.5 inline-flex items-center gap-1.5 text-[13px] font-medium cursor-pointer ios-press ${
+                          isLiked ? 'text-[#007AFF]' : 'text-[#8E8E93]'
                         }`}
                       >
-                        <Bookmark
+                        <Heart
                           className={`w-[18px] h-[18px] stroke-[1.85] ${
-                            post.isSaved ? 'fill-current' : ''
+                            isLiked ? 'fill-current' : ''
                           }`}
                         />
+                        <span className="tabular-nums">{post.likesCount}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => onOpenComments?.(post.id)}
+                        className="min-h-[36px] px-1.5 inline-flex items-center gap-1.5 text-[13px] font-medium text-[#8E8E93] hover:text-black dark:hover:text-white cursor-pointer ios-press"
+                      >
+                        <MessageCircle className="w-[18px] h-[18px] stroke-[1.85]" />
+                        <span className="tabular-nums">{post.commentsCount}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => onToggleRepost?.(post.id)}
+                        className={`min-h-[36px] px-1.5 inline-flex items-center gap-1.5 text-[13px] font-medium cursor-pointer ios-press ${
+                          post.isReposted ? 'text-[#007AFF]' : 'text-[#8E8E93]'
+                        }`}
+                      >
+                        <Repeat2 className="w-[18px] h-[18px] stroke-[1.85]" />
+                        <span className="tabular-nums">{post.sharesCount}</span>
                       </button>
                     </div>
-                  </article>
-                );
-              })}
-            </div>
-          </section>
-        )}
+
+                    <button
+                      type="button"
+                      onClick={() => onToggleSave?.(post.id)}
+                      aria-label={post.isSaved ? 'Remove bookmark' : 'Save post'}
+                      className={`min-w-[36px] min-h-[36px] flex items-center justify-center cursor-pointer ios-press ${
+                        post.isSaved ? 'text-[#007AFF]' : 'text-[#8E8E93]'
+                      }`}
+                    >
+                      <Bookmark
+                        className={`w-[18px] h-[18px] stroke-[1.85] ${
+                          post.isSaved ? 'fill-current' : ''
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </section>
       </div>
 
-      {/* Lazy-Loaded 3D Character Creator, Seoul World & Photo Studio */}
+      {/* Lazy-Loaded 2D Korean Webtoon Life Sim Game */}
       {studioOpen && (
         <Suspense
           fallback={
-            <div className="fixed inset-0 z-[70] bg-white dark:bg-black flex flex-col items-center justify-center gap-3 text-black dark:text-white">
-              <div className="w-8 h-8 rounded-full border-[3px] border-[#007AFF] border-t-transparent animate-spin" />
+            <div className="fixed inset-0 z-[70] bg-[#FFFDFB] dark:bg-[#121216] flex flex-col items-center justify-center gap-3 text-black dark:text-white">
+              <div className="w-8 h-8 rounded-full border-[3px] border-[#F0688E] border-t-transparent animate-spin" />
               <p className="text-[15px] font-medium text-[#8E8E93]">
-                Loading enmmoe 3D World...
+                Loading enmmoe Webtoon Life...
               </p>
             </div>
           }
         >
-          <CharacterStudioModal
+          <WebtoonGameModal
             isOpen={studioOpen}
             initialMode={studioInitialMode}
+            playerDefaultName={currentUser.name}
             onClose={() => {
               setStudioOpen(false);
               refreshStudioData();

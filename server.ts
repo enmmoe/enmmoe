@@ -1,4 +1,6 @@
+import 'dotenv/config';
 import express from 'express';
+import fs from 'fs';
 import http from 'http';
 import path from 'path';
 import { WebSocketServer, WebSocket } from 'ws';
@@ -9,7 +11,16 @@ import nodemailer from 'nodemailer';
 const app = express();
 const PORT = 3000;
 
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '25mb' }));
+
+// Serve local Apple iOS emoji PNG assets cleanly in both dev and production
+app.use(
+  '/emoji/apple/64',
+  express.static(path.join(process.cwd(), 'node_modules/emoji-datasource-apple/img/apple/64'), {
+    maxAge: '30d',
+    immutable: true,
+  })
+);
 
 // In-Memory state for server authority
 let serverRooms = [
@@ -161,17 +172,1744 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', app: 'enmmoe' });
 });
 
+// ================= MESSAGING & STORIES SERVER AUTHORITY =================
+
+interface ServerUserPrivacy {
+  userId: string;
+  showActivityStatus: boolean;
+  readReceiptsEnabled: boolean;
+  typingIndicatorsEnabled: boolean;
+  allowMessagesFrom: 'everyone' | 'following' | 'nobody';
+  storyDefaultAudience: 'everyone' | 'subscribers' | 'close_friends';
+  storyReplyPermission: 'everyone' | 'subscribers' | 'off';
+  saveStoriesToArchive: boolean;
+  followingIds: string[];
+  blockedUserIds: string[];
+  mutedUserIds: string[];
+  closeFriendIds: string[];
+  hiddenStoryUserIds: string[];
+  mutedStoryAuthorIds: string[];
+}
+
+const serverUserDirectory = new Map<
+  string,
+  { id: string; name: string; username: string; avatar: string; isVerified?: boolean }
+>([
+  [
+    'user-me',
+    {
+      id: 'user-me',
+      name: 'Alex',
+      username: 'alex_creator',
+      avatar: '',
+      isVerified: false,
+    },
+  ],
+  [
+    'user-1',
+    {
+      id: 'user-1',
+      name: 'Elena Rostova',
+      username: 'elena_sound',
+      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=300&auto=format&fit=crop&q=80',
+      isVerified: true,
+    },
+  ],
+  [
+    'user-2',
+    {
+      id: 'user-2',
+      name: 'Marcus Vance',
+      username: 'marcus_lens',
+      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&auto=format&fit=crop&q=80',
+      isVerified: true,
+    },
+  ],
+  [
+    'user-3',
+    {
+      id: 'user-3',
+      name: 'Chloe Kim',
+      username: 'chloe_art',
+      avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=300&auto=format&fit=crop&q=80',
+      isVerified: true,
+    },
+  ],
+  [
+    'user-4',
+    {
+      id: 'user-4',
+      name: 'Tariq Al-Mansoor',
+      username: 'tariq_tech',
+      avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=300&auto=format&fit=crop&q=80',
+      isVerified: true,
+    },
+  ],
+  [
+    'user-5',
+    {
+      id: 'user-5',
+      name: 'Selamawit Bekele',
+      username: 'selam_vibe',
+      avatar: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=300&auto=format&fit=crop&q=80',
+      isVerified: true,
+    },
+  ],
+  [
+    'user-6',
+    {
+      id: 'user-6',
+      name: 'Mina Park',
+      username: 'mina_sketch',
+      avatar: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=300&auto=format&fit=crop&q=80',
+      isVerified: false,
+    },
+  ],
+]);
+
+const serverUsersPrivacy = new Map<string, ServerUserPrivacy>([
+  [
+    'user-me',
+    {
+      userId: 'user-me',
+      showActivityStatus: true,
+      readReceiptsEnabled: true,
+      typingIndicatorsEnabled: true,
+      allowMessagesFrom: 'everyone',
+      storyDefaultAudience: 'everyone',
+      storyReplyPermission: 'everyone',
+      saveStoriesToArchive: true,
+      followingIds: ['user-1', 'user-2', 'user-3', 'user-4', 'user-5'],
+      blockedUserIds: [],
+      mutedUserIds: [],
+      closeFriendIds: ['user-1', 'user-3'],
+      hiddenStoryUserIds: [],
+      mutedStoryAuthorIds: [],
+    },
+  ],
+  [
+    'user-1',
+    {
+      userId: 'user-1',
+      showActivityStatus: true,
+      readReceiptsEnabled: true,
+      typingIndicatorsEnabled: true,
+      allowMessagesFrom: 'everyone',
+      storyDefaultAudience: 'everyone',
+      storyReplyPermission: 'everyone',
+      saveStoriesToArchive: true,
+      followingIds: ['user-me', 'user-3'],
+      blockedUserIds: [],
+      mutedUserIds: [],
+      closeFriendIds: ['user-me'],
+      hiddenStoryUserIds: [],
+      mutedStoryAuthorIds: [],
+    },
+  ],
+]);
+
+function getOrCreateUserPrivacy(userId: string): ServerUserPrivacy {
+  const existing = serverUsersPrivacy.get(userId);
+  if (existing) return existing;
+  const created: ServerUserPrivacy = {
+    userId,
+    showActivityStatus: true,
+    readReceiptsEnabled: true,
+    typingIndicatorsEnabled: true,
+    allowMessagesFrom: 'everyone',
+    storyDefaultAudience: 'everyone',
+    storyReplyPermission: 'everyone',
+    saveStoriesToArchive: true,
+    followingIds: [],
+    blockedUserIds: [],
+    mutedUserIds: [],
+    closeFriendIds: [],
+    hiddenStoryUserIds: [],
+    mutedStoryAuthorIds: [],
+  };
+  serverUsersPrivacy.set(userId, created);
+  return created;
+}
+
+function sanitizeSafeLink(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed.length > 500) return null;
+  const withProto = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    const u = new URL(withProto);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+    if (!u.hostname || !u.hostname.includes('.')) return null;
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
+function validateMediaSource(raw: unknown, mediaType: string): string | null {
+  if (mediaType === 'text') return '';
+  if (typeof raw !== 'string') return null;
+  const s = raw.trim();
+  if (!s) return null;
+  if (s.startsWith('/')) return s;
+  if (s.startsWith('https://') || s.startsWith('http://')) return s;
+  if (s.startsWith('data:image/jpeg;base64,') || s.startsWith('data:image/png;base64,') || s.startsWith('data:image/webp;base64,') || s.startsWith('data:image/gif;base64,')) {
+    if (s.length > 8 * 1024 * 1024) return null;
+    return s;
+  }
+  if (
+    mediaType === 'video' &&
+    (s.startsWith('data:video/mp4;base64,') ||
+      s.startsWith('data:video/webm;base64,') ||
+      s.startsWith('data:video/quicktime;base64,'))
+  ) {
+    if (s.length > 18 * 1024 * 1024) return null;
+    return s;
+  }
+  return null;
+}
+
+// Track live WebSocket connections per userId for real presence
+const onlineUserSockets = new Map<string, Set<WebSocket>>();
+const socketUserIds = new Map<WebSocket, string>();
+
+function isUserVisiblyOnline(userId: string): boolean {
+  const priv = getOrCreateUserPrivacy(userId);
+  if (!priv.showActivityStatus) return false;
+  const sockets = onlineUserSockets.get(userId);
+  return Boolean(sockets && sockets.size > 0);
+}
+
+function getVisibleOnlineUserIds(): string[] {
+  const ids: string[] = [];
+  for (const [uid, sockets] of onlineUserSockets.entries()) {
+    if (sockets.size > 0 && getOrCreateUserPrivacy(uid).showActivityStatus) {
+      ids.push(uid);
+    }
+  }
+  return ids;
+}
+
+function broadcastSocialEvent(payload: Record<string, any>, targetUserIds?: string[]) {
+  const raw = JSON.stringify(payload);
+  wss.clients.forEach((client) => {
+    if (client.readyState !== WebSocket.OPEN) return;
+    if (targetUserIds && targetUserIds.length > 0) {
+      const uid = socketUserIds.get(client);
+      if (!uid || !targetUserIds.includes(uid)) return;
+    }
+    client.send(raw);
+  });
+}
+
+function getConversationMemberIds(conv: any): string[] {
+  if (Array.isArray(conv?.memberIds) && conv.memberIds.length > 0) {
+    return Array.from(new Set(conv.memberIds.map(String)));
+  }
+  const participantIds = (conv?.participants || []).map((p: any) => String(p.id));
+  return Array.from(new Set(['user-me', ...participantIds]));
+}
+
+// Initial seeded Direct Conversations (with explicit memberIds for multi-account sync)
+const serverConversations: any[] = [
+  {
+    id: 'conv-1',
+    type: 'direct',
+    memberIds: ['user-me', 'user-1'],
+    participants: [
+      {
+        id: 'user-1',
+        name: 'Elena Rostova',
+        username: 'elena_sound',
+        avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
+        isVerified: true,
+        isOnline: false,
+        lastSeen: 'Active recently',
+      },
+    ],
+    unreadCount: 0,
+    isPinned: true,
+    isRequest: false,
+    messages: [
+      {
+        id: 'msg-1-1',
+        conversationId: 'conv-1',
+        senderId: 'user-me',
+        senderName: 'Alex',
+        senderUsername: 'alex_creator',
+        senderAvatar: '',
+        text: 'Hey Elena! Loved your studio story preview today. That bassline sounds monstrous!',
+        timestamp: Date.now() - 1000 * 60 * 120,
+        status: 'read',
+        seenAt: Date.now() - 1000 * 60 * 115,
+      },
+      {
+        id: 'msg-1-2',
+        conversationId: 'conv-1',
+        senderId: 'user-1',
+        senderName: 'Elena Rostova',
+        senderUsername: 'elena_sound',
+        senderAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
+        text: 'Thank you Alex! We spent 4 hours routing the tape delay pedals. Totally worth it 😊',
+        timestamp: Date.now() - 1000 * 60 * 90,
+        status: 'read',
+        reactions: { 'user-me': '❤️' },
+      },
+      {
+        id: 'msg-1-3',
+        conversationId: 'conv-1',
+        senderId: 'user-me',
+        senderName: 'Alex',
+        senderUsername: 'alex_creator',
+        senderAvatar: '',
+        text: 'Are you going to showcase it during the live set this weekend?',
+        timestamp: Date.now() - 1000 * 60 * 45,
+        status: 'read',
+        seenAt: Date.now() - 1000 * 60 * 40,
+      },
+      {
+        id: 'msg-1-4',
+        conversationId: 'conv-1',
+        senderId: 'user-1',
+        senderName: 'Elena Rostova',
+        senderUsername: 'elena_sound',
+        senderAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
+        text: 'Sent you the new master audio stems! Check the synth lead track on 1:42 🎧',
+        timestamp: Date.now() - 1000 * 60 * 15,
+        status: 'read',
+        reactions: { 'user-me': '🔥' },
+      },
+    ],
+  },
+  {
+    id: 'conv-2',
+    type: 'direct',
+    memberIds: ['user-me', 'user-3'],
+    participants: [
+      {
+        id: 'user-3',
+        name: 'Chloe Kim',
+        username: 'chloe_art',
+        avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80',
+        isVerified: true,
+        isOnline: false,
+        lastSeen: 'Active recently',
+      },
+    ],
+    unreadCount: 1,
+    isPinned: false,
+    isRequest: false,
+    messages: [
+      {
+        id: 'msg-2-1',
+        conversationId: 'conv-2',
+        senderId: 'user-me',
+        senderName: 'Alex',
+        senderUsername: 'alex_creator',
+        senderAvatar: '',
+        text: 'Hey Chloe, the glass refraction render is unbelievable!',
+        timestamp: Date.now() - 1000 * 60 * 180,
+        status: 'read',
+        seenAt: Date.now() - 1000 * 60 * 165,
+      },
+      {
+        id: 'msg-2-2',
+        conversationId: 'conv-2',
+        senderId: 'user-3',
+        senderName: 'Chloe Kim',
+        senderUsername: 'chloe_art',
+        senderAvatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80',
+        text: 'Would love your feedback on the 3D typography layout for enmmoe Creator Summit! 🎨',
+        timestamp: Date.now() - 1000 * 60 * 30,
+        status: 'delivered',
+      },
+    ],
+  },
+  {
+    id: 'conv-3',
+    type: 'group',
+    title: 'Global Creators Hub 🚀',
+    memberIds: ['user-me', 'user-1', 'user-2', 'user-5'],
+    participants: [
+      {
+        id: 'user-1',
+        name: 'Elena Rostova',
+        username: 'elena_sound',
+        avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
+        isVerified: true,
+        isOnline: false,
+      },
+      {
+        id: 'user-2',
+        name: 'Marcus Vance',
+        username: 'marcus_lens',
+        avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+        isVerified: true,
+        isOnline: false,
+      },
+      {
+        id: 'user-5',
+        name: 'Selamawit Bekele',
+        username: 'selam_vibe',
+        avatar: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=150&auto=format&fit=crop&q=80',
+        isVerified: true,
+        isOnline: false,
+      },
+    ],
+    unreadCount: 0,
+    isRequest: false,
+    messages: [
+      {
+        id: 'msg-3-1',
+        conversationId: 'conv-3',
+        senderId: 'user-me',
+        senderName: 'Alex',
+        senderUsername: 'alex_creator',
+        senderAvatar: '',
+        text: 'Sounds amazing! Let me send the stage concept art 🎨',
+        timestamp: Date.now() - 1000 * 60 * 42,
+        status: 'read',
+        seenAt: Date.now() - 1000 * 60 * 38,
+      },
+    ],
+  },
+  {
+    id: 'conv-4',
+    type: 'direct',
+    memberIds: ['user-me', 'user-2'],
+    participants: [
+      {
+        id: 'user-2',
+        name: 'Marcus Vance',
+        username: 'marcus_lens',
+        avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+        isVerified: true,
+        isOnline: false,
+        lastSeen: 'Active recently',
+      },
+    ],
+    unreadCount: 0,
+    isRequest: false,
+    messages: [
+      {
+        id: 'msg-4-1',
+        conversationId: 'conv-4',
+        senderId: 'user-me',
+        senderName: 'Alex',
+        senderUsername: 'alex_creator',
+        senderAvatar: '',
+        text: 'Hey Marcus, are you free for a quick live session tomorrow?',
+        timestamp: Date.now() - 1000 * 60 * 8,
+        status: 'sent',
+      },
+    ],
+  },
+  {
+    id: 'conv-req-1',
+    type: 'direct',
+    memberIds: ['user-me', 'user-6'],
+    isRequest: true,
+    requestStatus: 'pending',
+    participants: [
+      {
+        id: 'user-6',
+        name: 'Mina Park',
+        username: 'mina_sketch',
+        avatar: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=150&auto=format&fit=crop&q=80',
+        isVerified: false,
+        isOnline: false,
+        lastSeen: 'Active recently',
+      },
+    ],
+    unreadCount: 1,
+    messages: [
+      {
+        id: 'msg-req-1',
+        conversationId: 'conv-req-1',
+        senderId: 'user-6',
+        senderName: 'Mina Park',
+        senderUsername: 'mina_sketch',
+        senderAvatar: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=150&auto=format&fit=crop&q=80',
+        text: 'Hi Alex! I loved your latest series banner — would you be open to an illustration collab?',
+        timestamp: Date.now() - 1000 * 60 * 50,
+        status: 'delivered',
+      },
+    ],
+  },
+];
+
+serverConversations.forEach((c) => {
+  c.memberIds = getConversationMemberIds(c);
+  c.lastMessage = c.messages[c.messages.length - 1];
+});
+
+const SOCIAL_DB_DIR = path.join(process.cwd(), '.data');
+const SOCIAL_DB_FILE = path.join(SOCIAL_DB_DIR, 'social-db.json');
+
+function saveSocialDb() {
+  try {
+    if (!fs.existsSync(SOCIAL_DB_DIR)) {
+      fs.mkdirSync(SOCIAL_DB_DIR, { recursive: true });
+    }
+    const payload = {
+      conversations: serverConversations,
+      userDirectory: Array.from(serverUserDirectory.entries()),
+      privacyByUser: Array.from(serverUsersPrivacy.entries()),
+    };
+    const tmpFile = `${SOCIAL_DB_FILE}.tmp`;
+    fs.writeFileSync(tmpFile, JSON.stringify(payload, null, 2), 'utf8');
+    fs.renameSync(tmpFile, SOCIAL_DB_FILE);
+  } catch (err) {
+    console.error('[SocialDB] Failed saving social DB:', err);
+  }
+}
+
+function loadSocialDb() {
+  try {
+    if (!fs.existsSync(SOCIAL_DB_FILE)) {
+      saveSocialDb();
+      return;
+    }
+    const raw = fs.readFileSync(SOCIAL_DB_FILE, 'utf8');
+    if (!raw.trim()) return;
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed.userDirectory)) {
+      for (const [id, entry] of parsed.userDirectory) {
+        if (id && entry) serverUserDirectory.set(String(id), entry);
+      }
+    }
+    if (Array.isArray(parsed.privacyByUser)) {
+      for (const [id, entry] of parsed.privacyByUser) {
+        if (id && entry) serverUsersPrivacy.set(String(id), entry);
+      }
+    }
+    if (Array.isArray(parsed.conversations)) {
+      serverConversations.length = 0;
+      for (const c of parsed.conversations) {
+        if (c && c.id) {
+          c.memberIds = getConversationMemberIds(c);
+          c.messages = Array.isArray(c.messages) ? c.messages : [];
+          c.lastMessage = c.messages[c.messages.length - 1];
+          serverConversations.push(c);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[SocialDB] Failed loading social DB, continuing with defaults:', err);
+  }
+}
+
+loadSocialDb();
+
+// Initial Seeded Stories (includes grouped multi-story slides + expired archived stories)
+const serverStories: any[] = [
+  {
+    id: 'story-1',
+    authorId: 'user-1',
+    authorName: 'Elena Rostova',
+    authorUsername: 'elena_sound',
+    authorAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
+    authorVerified: true,
+    mediaUrl: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800&auto=format&fit=crop&q=80',
+    mediaType: 'photo',
+    caption: 'Live modular synthesizer rehearsal in Berlin! 🔥 Sound on! 🎧',
+    musicTitle: 'Cyber Twilight Pulse',
+    musicArtist: 'Elena Sound',
+    location: 'Berlin Club Quarter',
+    createdAt: Date.now() - 3600000 * 2,
+    expiresAt: Date.now() + 3600000 * 22,
+    audience: 'everyone',
+    replyPermission: 'everyone',
+    isSeen: false,
+    isArchived: true,
+    viewsCount: 142,
+    likesCount: 24,
+    likedByIds: [],
+    viewers: [
+      {
+        userId: 'user-3',
+        name: 'Chloe Kim',
+        username: 'chloe_art',
+        avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80',
+        viewedAt: Date.now() - 3600000,
+        reactedEmoji: '🔥',
+        liked: true,
+      },
+    ],
+    reactions: [{ userId: 'user-3', emoji: '🔥' }],
+  },
+  {
+    id: 'story-1b',
+    authorId: 'user-1',
+    authorName: 'Elena Rostova',
+    authorUsername: 'elena_sound',
+    authorAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
+    authorVerified: true,
+    mediaUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=80',
+    mediaType: 'photo',
+    caption: 'Drop feedback below for tonight’s midnight setlist!',
+    createdAt: Date.now() - 3600000 * 1,
+    expiresAt: Date.now() + 3600000 * 23,
+    audience: 'everyone',
+    replyPermission: 'everyone',
+    isSeen: false,
+    isArchived: true,
+    viewsCount: 98,
+    likesCount: 18,
+    likedByIds: [],
+    viewers: [],
+    stickers: [
+      {
+        id: 'stk-q-1',
+        type: 'question',
+        x: 50,
+        y: 52,
+        question: 'Which synth track should I open with?',
+        responses: [],
+      },
+    ],
+  },
+  {
+    id: 'story-2',
+    authorId: 'user-3',
+    authorName: 'Chloe Kim',
+    authorUsername: 'chloe_art',
+    authorAvatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80',
+    authorVerified: true,
+    mediaUrl: 'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?w=800&auto=format&fit=crop&q=80',
+    mediaType: 'photo',
+    caption: 'Finished rendering my new 3D holographic installation! Thoughts? ✨',
+    createdAt: Date.now() - 3600000 * 4,
+    expiresAt: Date.now() + 3600000 * 20,
+    audience: 'everyone',
+    replyPermission: 'everyone',
+    isSeen: false,
+    isArchived: true,
+    viewsCount: 289,
+    likesCount: 41,
+    likedByIds: [],
+    viewers: [],
+    poll: {
+      question: 'Should I make this an animated wallpaper pack?',
+      optionA: 'Yes, please! 😍',
+      optionB: 'Make it a VR space 🌌',
+      votesA: 34,
+      votesB: 28,
+      voterVotes: {},
+    },
+  },
+  {
+    id: 'story-3',
+    authorId: 'user-2',
+    authorName: 'Marcus Vance',
+    authorUsername: 'marcus_lens',
+    authorAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+    authorVerified: true,
+    mediaUrl: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=800&auto=format&fit=crop&q=80',
+    mediaType: 'photo',
+    caption: 'Sunrise over Banff national park at -12°C. Totally worth it 🏔️',
+    location: 'Banff, Alberta',
+    createdAt: Date.now() - 3600000 * 7,
+    expiresAt: Date.now() + 3600000 * 17,
+    audience: 'everyone',
+    replyPermission: 'everyone',
+    isSeen: true,
+    isArchived: true,
+    viewsCount: 198,
+    likesCount: 33,
+    likedByIds: [],
+    viewers: [],
+  },
+  {
+    id: 'story-4',
+    authorId: 'user-5',
+    authorName: 'Selamawit Bekele',
+    authorUsername: 'selam_vibe',
+    authorAvatar: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=150&auto=format&fit=crop&q=80',
+    authorVerified: true,
+    mediaUrl: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=800&auto=format&fit=crop&q=80',
+    mediaType: 'photo',
+    caption: 'Traditional coffee ceremony vibes today in Bole ☕✨ Enjoying the aroma!',
+    location: 'Addis Ababa',
+    createdAt: Date.now() - 3600000 * 8,
+    expiresAt: Date.now() + 3600000 * 16,
+    audience: 'everyone',
+    replyPermission: 'everyone',
+    isSeen: true,
+    isArchived: true,
+    viewsCount: 165,
+    likesCount: 29,
+    likedByIds: [],
+    viewers: [],
+  },
+  // Owner archived expired stories (accessible via Archive & Highlights for user-me)
+  {
+    id: 'story-arch-1',
+    authorId: 'user-me',
+    authorName: 'Alex',
+    authorUsername: 'alex_creator',
+    authorAvatar: '',
+    mediaUrl: 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=800&auto=format&fit=crop&q=80',
+    mediaType: 'photo',
+    caption: 'Tokyo sketch walks — Shibuya sunset notebook',
+    location: 'Tokyo, Japan',
+    createdAt: Date.now() - 86400000 * 12,
+    expiresAt: Date.now() - 86400000 * 11,
+    audience: 'everyone',
+    replyPermission: 'everyone',
+    isSeen: true,
+    isArchived: true,
+    viewsCount: 312,
+    likesCount: 52,
+    likedByIds: ['user-1', 'user-3'],
+    viewers: [
+      {
+        userId: 'user-1',
+        name: 'Elena Rostova',
+        username: 'elena_sound',
+        avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
+        viewedAt: Date.now() - 86400000 * 11.8,
+        liked: true,
+      },
+    ],
+  },
+  {
+    id: 'story-arch-2',
+    authorId: 'user-me',
+    authorName: 'Alex',
+    authorUsername: 'alex_creator',
+    authorAvatar: '',
+    mediaUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&auto=format&fit=crop&q=80',
+    mediaType: 'photo',
+    caption: 'Color study for Episode 14 cover art ✨',
+    location: 'San Francisco Studio',
+    createdAt: Date.now() - 86400000 * 6,
+    expiresAt: Date.now() - 86400000 * 5,
+    audience: 'everyone',
+    replyPermission: 'everyone',
+    isSeen: true,
+    isArchived: true,
+    viewsCount: 245,
+    likesCount: 38,
+    likedByIds: ['user-2'],
+    viewers: [],
+  },
+];
+
+const serverHighlights: any[] = [
+  {
+    id: 'hl-1',
+    ownerId: 'user-me',
+    title: 'Travel ✈️',
+    coverImage: 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=300&auto=format&fit=crop&q=80',
+    storyIds: ['story-arch-1', 'story-3'],
+    createdAt: Date.now() - 86400000 * 30,
+  },
+  {
+    id: 'hl-2',
+    ownerId: 'user-me',
+    title: 'Design Lab 💡',
+    coverImage: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=300&auto=format&fit=crop&q=80',
+    storyIds: ['story-arch-2', 'story-2'],
+    createdAt: Date.now() - 86400000 * 10,
+  },
+  {
+    id: 'hl-3',
+    ownerId: 'user-me',
+    title: 'Sound & Beat 🎵',
+    coverImage: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&auto=format&fit=crop&q=80',
+    storyIds: ['story-1'],
+    createdAt: Date.now() - 86400000 * 5,
+  },
+];
+
+const serverReports: any[] = [];
+const storyReportedByUser = new Map<string, Set<string>>();
+
+function isStoryVisibleOnServer(story: any, viewerId: string, now = Date.now()): boolean {
+  if (story.expiresAt <= now) return false;
+  const viewerPriv = getOrCreateUserPrivacy(viewerId);
+  if (viewerId !== story.authorId) {
+    if (viewerPriv.blockedUserIds.includes(story.authorId)) return false;
+    const authorPriv = getOrCreateUserPrivacy(story.authorId);
+    if (authorPriv.blockedUserIds.includes(viewerId)) return false;
+    if ((story.hiddenFromIds || []).includes(viewerId)) return false;
+    const reportedSet = storyReportedByUser.get(viewerId);
+    if (reportedSet?.has(story.id)) return false;
+    if (story.audience === 'subscribers' && !viewerPriv.followingIds.includes(story.authorId)) {
+      return false;
+    }
+    if (story.audience === 'close_friends' && !authorPriv.closeFriendIds.includes(viewerId)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function formatConversationForViewer(conv: any, viewerId: string) {
+  const viewerPriv = getOrCreateUserPrivacy(viewerId);
+  const memberIds = getConversationMemberIds(conv);
+  const otherMemberIds = memberIds.filter((id) => id !== viewerId);
+
+  const storedParticipantsById = new Map<string, any>(
+    (conv.participants || []).map((p: any) => [String(p.id), p])
+  );
+
+  const rawParticipants =
+    otherMemberIds.length > 0
+      ? otherMemberIds.map((pid) => {
+          const dir = serverUserDirectory.get(pid);
+          const stored = storedParticipantsById.get(pid);
+          return {
+            id: pid,
+            name: stored?.name || dir?.name || 'Creator',
+            username: stored?.username || dir?.username || 'creator',
+            avatar: stored?.avatar || dir?.avatar || '',
+            isVerified: stored?.isVerified ?? dir?.isVerified,
+            lastSeen: stored?.lastSeen || 'Active recently',
+          };
+        })
+      : conv.participants || [];
+
+  const partner = rawParticipants[0];
+  const partnerId = partner?.id;
+  const isBlockedByMe = partnerId ? viewerPriv.blockedUserIds.includes(partnerId) : false;
+  const partnerPriv = partnerId ? getOrCreateUserPrivacy(partnerId) : null;
+  const isBlockedByThem = partnerPriv ? partnerPriv.blockedUserIds.includes(viewerId) : false;
+
+  const updatedParticipants = rawParticipants.map((p: any) => ({
+    ...p,
+    isOnline: !isBlockedByMe && !isBlockedByThem ? isUserVisiblyOnline(p.id) : false,
+  }));
+
+  const viewerSeesReceipts = viewerPriv.readReceiptsEnabled;
+  const formattedMessages = (conv.messages || [])
+    .filter(
+      (m: any) => !Array.isArray(m.deletedForUserIds) || !m.deletedForUserIds.includes(viewerId)
+    )
+    .map((m: any) => {
+      if (!viewerSeesReceipts && m.senderId === viewerId && m.status === 'read') {
+        return { ...m, status: 'delivered', seenAt: undefined };
+      }
+      return m;
+    });
+
+  return {
+    ...conv,
+    memberIds,
+    participants: updatedParticipants,
+    isBlockedByMe,
+    isBlockedByThem,
+    isMuted: viewerPriv.mutedUserIds.includes(partnerId) || Boolean(conv.isMuted),
+    messages: formattedMessages,
+    lastMessage: formattedMessages[formattedMessages.length - 1],
+  };
+}
+
+function formatStoryForViewer(story: any, viewerId: string) {
+  const isOwner = story.authorId === viewerId;
+  const viewerEntry = (story.viewers || []).find((v: any) => v.userId === viewerId);
+  const sanitized: any = {
+    ...story,
+    isSeen: Boolean(viewerEntry) || Boolean(story.isSeen),
+  };
+  if (story.poll?.voterVotes) {
+    sanitized.poll = {
+      ...story.poll,
+      userVote: story.poll.voterVotes[viewerId],
+    };
+  }
+  if (!isOwner) {
+    // Keep aggregate counts, hide private full viewer list from non-owners
+    delete sanitized.viewers;
+    delete sanitized.hiddenFromIds;
+  }
+  return sanitized;
+}
+
+// 1. Bootstrap messaging, stories, archive & highlights for a viewer
+app.get('/api/social/bootstrap', (req, res) => {
+  const userId = String(req.query.userId || 'user-me');
+  const now = Date.now();
+  const priv = getOrCreateUserPrivacy(userId);
+
+  const visibleConversations = serverConversations
+    .filter((c) => getConversationMemberIds(c).includes(userId))
+    .map((c) => formatConversationForViewer(c, userId));
+  const visibleStories = serverStories
+    .filter((s) => isStoryVisibleOnServer(s, userId, now))
+    .map((s) => formatStoryForViewer(s, userId));
+  const archiveStories = serverStories
+    .filter((s) => s.authorId === userId && s.isArchived !== false)
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .map((s) => formatStoryForViewer(s, userId));
+
+  res.json({
+    success: true,
+    privacy: priv,
+    onlineUserIds: getVisibleOnlineUserIds(),
+    conversations: visibleConversations,
+    stories: visibleStories,
+    archiveStories,
+    highlights: serverHighlights,
+  });
+});
+
+// 2. Persist user privacy & story/message controls
+app.post('/api/users/privacy', (req, res) => {
+  const { userId = 'user-me', name, username, avatar, isVerified, ...updates } = req.body || {};
+  const uid = String(userId);
+  const priv = getOrCreateUserPrivacy(uid);
+  const prevActivity = priv.showActivityStatus;
+
+  if (typeof name === 'string' || typeof username === 'string' || typeof avatar === 'string') {
+    const existingDir = serverUserDirectory.get(uid);
+    serverUserDirectory.set(uid, {
+      id: uid,
+      name: typeof name === 'string' && name.trim() ? name.trim() : existingDir?.name || 'Creator',
+      username:
+        typeof username === 'string' && username.trim()
+          ? username.trim()
+          : existingDir?.username || uid,
+      avatar: typeof avatar === 'string' ? avatar : existingDir?.avatar || '',
+      isVerified: typeof isVerified === 'boolean' ? isVerified : existingDir?.isVerified,
+    });
+  }
+
+  if (typeof updates.showActivityStatus === 'boolean') priv.showActivityStatus = updates.showActivityStatus;
+  if (typeof updates.readReceiptsEnabled === 'boolean') priv.readReceiptsEnabled = updates.readReceiptsEnabled;
+  if (typeof updates.typingIndicatorsEnabled === 'boolean') priv.typingIndicatorsEnabled = updates.typingIndicatorsEnabled;
+  if (updates.allowMessagesFrom === 'everyone' || updates.allowMessagesFrom === 'following' || updates.allowMessagesFrom === 'nobody') {
+    priv.allowMessagesFrom = updates.allowMessagesFrom;
+  }
+  if (updates.storyDefaultAudience === 'everyone' || updates.storyDefaultAudience === 'subscribers' || updates.storyDefaultAudience === 'close_friends') {
+    priv.storyDefaultAudience = updates.storyDefaultAudience;
+  }
+  if (updates.storyReplyPermission === 'everyone' || updates.storyReplyPermission === 'subscribers' || updates.storyReplyPermission === 'off') {
+    priv.storyReplyPermission = updates.storyReplyPermission;
+  }
+  if (typeof updates.saveStoriesToArchive === 'boolean') priv.saveStoriesToArchive = updates.saveStoriesToArchive;
+  if (Array.isArray(updates.followingIds)) priv.followingIds = updates.followingIds.map(String);
+  if (Array.isArray(updates.blockedUserIds)) priv.blockedUserIds = updates.blockedUserIds.map(String);
+  if (Array.isArray(updates.mutedUserIds)) priv.mutedUserIds = updates.mutedUserIds.map(String);
+  if (Array.isArray(updates.closeFriendIds)) priv.closeFriendIds = updates.closeFriendIds.map(String);
+  if (Array.isArray(updates.hiddenStoryUserIds)) priv.hiddenStoryUserIds = updates.hiddenStoryUserIds.map(String);
+  if (Array.isArray(updates.mutedStoryAuthorIds)) priv.mutedStoryAuthorIds = updates.mutedStoryAuthorIds.map(String);
+
+  saveSocialDb();
+
+  if (prevActivity !== priv.showActivityStatus) {
+    broadcastSocialEvent({
+      type: 'dm:presence',
+      onlineUserIds: getVisibleOnlineUserIds(),
+      updatedUserId: userId,
+      isOnline: isUserVisiblyOnline(uid),
+    });
+  }
+
+  res.json({ success: true, privacy: priv });
+});
+
+// 3. Start or retrieve DM / group conversation (privacy-enforced)
+app.post('/api/messages/conversation', (req, res) => {
+  const { userId = 'user-me', targetUserId, targetUserData, title, participantIds } = req.body || {};
+  const senderPriv = getOrCreateUserPrivacy(String(userId));
+
+  if (Array.isArray(participantIds) && participantIds.length > 0) {
+    const cleanIds = participantIds.map(String).filter((id: string) => !senderPriv.blockedUserIds.includes(id));
+    if (cleanIds.length === 0) {
+      return res.status(400).json({ error: 'Select at least one eligible participant.' });
+    }
+    const convId = `conv-grp-${Date.now()}`;
+    const participants = cleanIds.map((pid: string) => {
+      const dir = serverUserDirectory.get(pid);
+      return {
+        id: pid,
+        name: dir?.name || 'Creator',
+        username: dir?.username || 'creator',
+        avatar: dir?.avatar || '',
+        isVerified: dir?.isVerified,
+        isOnline: isUserVisiblyOnline(pid),
+      };
+    });
+    const newGroup = {
+      id: convId,
+      type: 'group',
+      title: String(title || 'Creators Group').slice(0, 60),
+      participants,
+      unreadCount: 0,
+      isRequest: false,
+      messages: [],
+    };
+    serverConversations.unshift(newGroup);
+    return res.json({ success: true, conversation: formatConversationForViewer(newGroup, String(userId)) });
+  }
+
+  const targetId = String(targetUserId || '');
+  if (!targetId) {
+    return res.status(400).json({ error: 'targetUserId is required.' });
+  }
+
+  const targetPriv = getOrCreateUserPrivacy(targetId);
+  if (senderPriv.blockedUserIds.includes(targetId) || targetPriv.blockedUserIds.includes(String(userId))) {
+    return res.status(403).json({ error: 'Messaging is unavailable because this account is blocked.' });
+  }
+
+  const existing = serverConversations.find(
+    (c) => c.type === 'direct' && c.participants.some((p: any) => p.id === targetId || (targetUserData?.username && p.username === targetUserData.username))
+  );
+  if (existing) {
+    return res.json({ success: true, conversation: formatConversationForViewer(existing, String(userId)) });
+  }
+
+  if (targetPriv.allowMessagesFrom === 'nobody') {
+    return res.status(403).json({ error: 'This user does not accept new messages.' });
+  }
+
+  const isSubscriber = targetPriv.followingIds.includes(String(userId)) || senderPriv.followingIds.includes(targetId);
+  const shouldRouteToRequests = targetPriv.allowMessagesFrom === 'following' && !isSubscriber;
+
+  const dir = serverUserDirectory.get(targetId);
+  const newConv = {
+    id: `conv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    type: 'direct',
+    participants: [
+      {
+        id: targetId,
+        name: targetUserData?.name || dir?.name || 'Creator',
+        username: targetUserData?.username || dir?.username || 'creator',
+        avatar: targetUserData?.avatar || dir?.avatar || '',
+        isVerified: targetUserData?.isVerified ?? dir?.isVerified,
+        isOnline: isUserVisiblyOnline(targetId),
+        lastSeen: 'Active recently',
+      },
+    ],
+    unreadCount: 0,
+    isRequest: shouldRouteToRequests,
+    requestStatus: shouldRouteToRequests ? 'pending' : undefined,
+    messages: [],
+  };
+
+  serverConversations.unshift(newConv);
+  res.json({ success: true, conversation: formatConversationForViewer(newConv, String(userId)) });
+});
+
+// 4. Send Direct Message
+app.post('/api/messages/send', (req, res) => {
+  const { conversationId, senderId = 'user-me', senderName, senderUsername, senderAvatar, text, replyTo, storyReply, bubbleStyle } = req.body || {};
+  const cleanText = typeof text === 'string' ? text.trim() : '';
+  if (!conversationId || !cleanText) {
+    return res.status(400).json({ error: 'conversationId and non-empty message text are required.' });
+  }
+
+  const conv = serverConversations.find((c) => c.id === conversationId);
+  if (!conv) {
+    return res.status(404).json({ error: 'Conversation not found.' });
+  }
+
+  const senderPriv = getOrCreateUserPrivacy(String(senderId));
+  for (const p of conv.participants || []) {
+    const pPriv = getOrCreateUserPrivacy(p.id);
+    if (senderPriv.blockedUserIds.includes(p.id) || pPriv.blockedUserIds.includes(String(senderId))) {
+      return res.status(403).json({ error: 'Cannot send messages to a blocked account.' });
+    }
+    if (conv.type === 'direct' && pPriv.allowMessagesFrom === 'nobody') {
+      return res.status(403).json({ error: 'This user has disabled incoming messages.' });
+    }
+  }
+
+  const dir = serverUserDirectory.get(String(senderId));
+  const msg = {
+    id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    conversationId,
+    senderId: String(senderId),
+    senderName: senderName || dir?.name || 'User',
+    senderUsername: senderUsername || dir?.username || 'user',
+    senderAvatar: senderAvatar || dir?.avatar || '',
+    text: cleanText.slice(0, 2000),
+    timestamp: Date.now(),
+    status: 'sent',
+    replyTo: replyTo ? { id: String(replyTo.id), text: String(replyTo.text), senderName: String(replyTo.senderName) } : undefined,
+    storyReply: storyReply || undefined,
+    bubbleStyle: bubbleStyle || 'default',
+  };
+
+  conv.messages.push(msg);
+  conv.lastMessage = msg;
+  conv.isTyping = false;
+  conv.typingUserId = undefined;
+  conv.typingUserName = undefined;
+
+  broadcastSocialEvent({
+    type: 'dm:message',
+    conversationId,
+    message: msg,
+  });
+
+  res.json({ success: true, message: msg });
+});
+
+// 5. Mark conversation read (enforces readReceiptsEnabled)
+app.post('/api/messages/read', (req, res) => {
+  const { conversationId, readerId = 'user-me' } = req.body || {};
+  const conv = serverConversations.find((c) => c.id === conversationId);
+  if (!conv) {
+    return res.status(404).json({ error: 'Conversation not found.' });
+  }
+
+  const readerPriv = getOrCreateUserPrivacy(String(readerId));
+  const partnerId = conv.participants?.[0]?.id;
+  const partnerPriv = partnerId ? getOrCreateUserPrivacy(partnerId) : null;
+  const allowSeenReceipt = readerPriv.readReceiptsEnabled && (partnerPriv ? partnerPriv.readReceiptsEnabled : true);
+  const seenAt = Date.now();
+
+  conv.unreadCount = 0;
+  conv.messages = conv.messages.map((m: any) => {
+    if (m.senderId !== readerId && m.status !== 'read') {
+      return {
+        ...m,
+        status: allowSeenReceipt ? 'read' : 'delivered',
+        seenAt: allowSeenReceipt ? seenAt : undefined,
+      };
+    }
+    return m;
+  });
+  conv.lastMessage = conv.messages[conv.messages.length - 1];
+
+  broadcastSocialEvent({
+    type: 'dm:read',
+    conversationId,
+    readerId,
+    seenAt: allowSeenReceipt ? seenAt : undefined,
+    receiptVisible: allowSeenReceipt,
+  });
+
+  res.json({ success: true, receiptVisible: allowSeenReceipt, seenAt });
+});
+
+// 6. React to message
+app.post('/api/messages/react', (req, res) => {
+  const { conversationId, messageId, userId = 'user-me', emoji } = req.body || {};
+  const conv = serverConversations.find((c) => c.id === conversationId);
+  if (!conv) return res.status(404).json({ error: 'Conversation not found.' });
+
+  const msg = conv.messages.find((m: any) => m.id === messageId);
+  if (!msg) return res.status(404).json({ error: 'Message not found.' });
+
+  msg.reactions = msg.reactions || {};
+  if (msg.reactions[userId] === emoji) {
+    delete msg.reactions[userId];
+  } else if (emoji) {
+    msg.reactions[userId] = String(emoji).slice(0, 8);
+  }
+
+  broadcastSocialEvent({
+    type: 'dm:reaction',
+    conversationId,
+    messageId,
+    userId,
+    reactions: msg.reactions,
+  });
+
+  res.json({ success: true, reactions: msg.reactions });
+});
+
+// 7. Delete / Unsend message (enforces sender ownership for delete-for-everyone; per-user for delete-for-me)
+app.delete('/api/messages/:convId/:msgId', (req, res) => {
+  const { convId, msgId } = req.params;
+  const userId = String(req.query.userId || req.body?.userId || 'user-me');
+  const rawMode = String(req.query.mode || req.body?.mode || 'delete_for_me');
+  const mode: 'unsend' | 'delete_for_me' = rawMode === 'unsend' ? 'unsend' : 'delete_for_me';
+
+  const conv = serverConversations.find((c) => c.id === convId);
+  if (!conv) return res.status(404).json({ error: 'Conversation not found.' });
+
+  const msgIdx = conv.messages.findIndex((m: any) => m.id === msgId);
+  if (msgIdx === -1) return res.status(404).json({ error: 'Message not found.' });
+
+  const msg = conv.messages[msgIdx];
+  if (mode === 'unsend') {
+    if (msg.senderId !== userId) {
+      return res.status(403).json({
+        error: 'Only the sender can delete this message for everyone.',
+      });
+    }
+    conv.messages.splice(msgIdx, 1);
+    conv.lastMessage = conv.messages[conv.messages.length - 1];
+
+    broadcastSocialEvent({
+      type: 'dm:delete',
+      conversationId: convId,
+      messageId: msgId,
+      mode: 'unsend',
+      deletedByUserId: userId,
+    });
+
+    return res.json({
+      success: true,
+      messageId: msgId,
+      mode: 'unsend',
+      deletedForEveryone: true,
+    });
+  }
+
+  const prevDeletedFor = Array.isArray(msg.deletedForUserIds) ? msg.deletedForUserIds : [];
+  if (!prevDeletedFor.includes(userId)) {
+    msg.deletedForUserIds = [...prevDeletedFor, userId];
+  }
+
+  broadcastSocialEvent({
+    type: 'dm:delete',
+    conversationId: convId,
+    messageId: msgId,
+    mode: 'delete_for_me',
+    deletedByUserId: userId,
+  });
+
+  return res.json({
+    success: true,
+    messageId: msgId,
+    mode: 'delete_for_me',
+    deletedForEveryone: false,
+  });
+});
+
+// 8. Message Request actions (Accept / Decline / Block / Spam)
+app.post('/api/messages/request-action', (req, res) => {
+  const { conversationId, userId = 'user-me', action } = req.body || {};
+  const idx = serverConversations.findIndex((c) => c.id === conversationId);
+  if (idx === -1) return res.status(404).json({ error: 'Request not found.' });
+
+  const conv = serverConversations[idx];
+  const partnerId = conv.participants?.[0]?.id;
+  if (action === 'accept') {
+    conv.isRequest = false;
+    conv.requestStatus = 'accepted';
+    return res.json({ success: true, conversation: formatConversationForViewer(conv, String(userId)) });
+  }
+  if (action === 'block' && partnerId) {
+    const priv = getOrCreateUserPrivacy(String(userId));
+    if (!priv.blockedUserIds.includes(partnerId)) {
+      priv.blockedUserIds.push(partnerId);
+    }
+    serverConversations.splice(idx, 1);
+    return res.json({ success: true, blockedUserId: partnerId });
+  }
+  // Decline or mark spam
+  serverConversations.splice(idx, 1);
+  return res.json({ success: true, removed: true });
+});
+
+// 9. Block / Unblock / Mute user sync
+app.post('/api/messages/block', (req, res) => {
+  const { userId = 'user-me', targetUserId, block } = req.body || {};
+  if (!targetUserId) return res.status(400).json({ error: 'targetUserId is required.' });
+  const priv = getOrCreateUserPrivacy(String(userId));
+  if (block) {
+    if (!priv.blockedUserIds.includes(String(targetUserId))) {
+      priv.blockedUserIds.push(String(targetUserId));
+    }
+  } else {
+    priv.blockedUserIds = priv.blockedUserIds.filter((id) => id !== String(targetUserId));
+  }
+  broadcastSocialEvent({
+    type: 'dm:presence',
+    onlineUserIds: getVisibleOnlineUserIds(),
+  });
+  res.json({ success: true, blockedUserIds: priv.blockedUserIds });
+});
+
+// 10. Create Story (validation, deduplication, audience & archive)
+app.post('/api/stories', (req, res) => {
+  const body = req.body || {};
+  const authorId = String(body.authorId || 'user-me');
+  const mediaType = body.mediaType === 'video' ? 'video' : body.mediaType === 'text' ? 'text' : 'photo';
+
+  const validatedMediaUrl = validateMediaSource(body.mediaUrl, mediaType);
+  if (validatedMediaUrl === null) {
+    return res.status(400).json({ error: 'Unsupported or oversized story media payload.' });
+  }
+
+  // Deduplication check inside recent 30 seconds window
+  if (body.mediaHash) {
+    const dup = serverStories.find(
+      (s) =>
+        s.authorId === authorId &&
+        s.mediaHash === body.mediaHash &&
+        Date.now() - s.createdAt < 30000
+    );
+    if (dup) {
+      return res.json({ success: true, story: formatStoryForViewer(dup, authorId), deduplicated: true });
+    }
+  }
+
+  // Validate any link stickers safely
+  const sanitizedStickers = Array.isArray(body.stickers)
+    ? body.stickers
+        .map((st: any) => {
+          if (st?.type === 'link') {
+            const safeUrl = sanitizeSafeLink(st.url);
+            if (!safeUrl) return null;
+            return { ...st, url: safeUrl };
+          }
+          return st;
+        })
+        .filter(Boolean)
+    : [];
+
+  const now = Date.now();
+  const dir = serverUserDirectory.get(authorId);
+  const newStory = {
+    id: `story-${now}-${Math.random().toString(36).slice(2, 6)}`,
+    authorId,
+    authorName: body.authorName || dir?.name || 'Alex',
+    authorUsername: body.authorUsername || dir?.username || 'alex_creator',
+    authorAvatar: body.authorAvatar || dir?.avatar || '',
+    authorVerified: Boolean(body.authorVerified ?? dir?.isVerified),
+    mediaUrl: validatedMediaUrl,
+    thumbnailUrl: typeof body.thumbnailUrl === 'string' ? body.thumbnailUrl : validatedMediaUrl,
+    mediaType,
+    backgroundGradient: body.backgroundGradient || undefined,
+    cropTransform: body.cropTransform || undefined,
+    drawingDataUrl:
+      typeof body.drawingDataUrl === 'string' && body.drawingDataUrl.startsWith('data:image/png;base64,')
+        ? body.drawingDataUrl
+        : undefined,
+    textOverlays: Array.isArray(body.textOverlays) ? body.textOverlays : [],
+    stickers: sanitizedStickers,
+    caption: typeof body.caption === 'string' ? body.caption.trim().slice(0, 300) : undefined,
+    location: typeof body.location === 'string' ? body.location.trim().slice(0, 80) : undefined,
+    poll: body.poll
+      ? {
+          question: String(body.poll.question || '').slice(0, 120),
+          optionA: String(body.poll.optionA || 'Yes').slice(0, 60),
+          optionB: String(body.poll.optionB || 'No').slice(0, 60),
+          votesA: 0,
+          votesB: 0,
+          voterVotes: {},
+        }
+      : undefined,
+    audience: body.audience || 'everyone',
+    hiddenFromIds: Array.isArray(body.hiddenFromIds) ? body.hiddenFromIds.map(String) : [],
+    replyPermission: body.replyPermission || 'everyone',
+    isArchived: body.saveToArchive !== false,
+    mediaHash: body.mediaHash || undefined,
+    createdAt: now,
+    expiresAt: now + 24 * 3600 * 1000,
+    canEditUntil: now + 15 * 60 * 1000, // 15-minute eligible metadata edit window
+    isSeen: false,
+    viewsCount: 0,
+    likesCount: 0,
+    likedByIds: [],
+    viewers: [],
+    reactions: [],
+  };
+
+  serverStories.unshift(newStory);
+  broadcastSocialEvent({ type: 'story:created', storyId: newStory.id, authorId });
+  res.json({ success: true, story: formatStoryForViewer(newStory, authorId) });
+});
+
+// 11. Edit eligible Story metadata shortly after posting (preserves views/reactions/votes)
+app.patch('/api/stories/:id', (req, res) => {
+  const { id } = req.params;
+  const { userId = 'user-me', caption, location, audience, hiddenFromIds, replyPermission } = req.body || {};
+  const story = serverStories.find((s) => s.id === id);
+  if (!story) return res.status(404).json({ error: 'Story not found.' });
+  if (story.authorId !== userId) return res.status(403).json({ error: 'Not authorized to edit this story.' });
+  if (story.canEditUntil && Date.now() > story.canEditUntil) {
+    return res.status(400).json({ error: 'The 15-minute post-publish edit window has ended.' });
+  }
+
+  if (typeof caption === 'string') story.caption = caption.trim().slice(0, 300);
+  if (typeof location === 'string') story.location = location.trim().slice(0, 80) || undefined;
+  if (audience === 'everyone' || audience === 'subscribers' || audience === 'close_friends') {
+    story.audience = audience;
+  }
+  if (Array.isArray(hiddenFromIds)) story.hiddenFromIds = hiddenFromIds.map(String);
+  if (replyPermission === 'everyone' || replyPermission === 'subscribers' || replyPermission === 'off') {
+    story.replyPermission = replyPermission;
+  }
+
+  broadcastSocialEvent({ type: 'story:updated', storyId: id });
+  res.json({ success: true, story: formatStoryForViewer(story, String(userId)) });
+});
+
+// 12. Delete Story
+app.delete('/api/stories/:id', (req, res) => {
+  const { id } = req.params;
+  const userId = String(req.query.userId || req.body?.userId || 'user-me');
+  const idx = serverStories.findIndex((s) => s.id === id);
+  if (idx === -1) return res.status(404).json({ error: 'Story not found.' });
+  if (serverStories[idx].authorId !== userId) {
+    return res.status(403).json({ error: 'Only the story author can delete this story.' });
+  }
+  serverStories.splice(idx, 1);
+  // Remove from highlights referencing it
+  serverHighlights.forEach((h) => {
+    h.storyIds = (h.storyIds || []).filter((sid: string) => sid !== id);
+  });
+  broadcastSocialEvent({ type: 'story:deleted', storyId: id });
+  res.json({ success: true, deletedId: id });
+});
+
+// 13. Record Story View + Viewer Entry
+app.post('/api/stories/:id/view', (req, res) => {
+  const { id } = req.params;
+  const { userId = 'user-me', name = 'Alex', username = 'alex_creator', avatar = '' } = req.body || {};
+  const story = serverStories.find((s) => s.id === id);
+  if (!story) return res.status(404).json({ error: 'Story not found.' });
+
+  story.viewers = story.viewers || [];
+  const existing = story.viewers.find((v: any) => v.userId === userId);
+  if (!existing && userId !== story.authorId) {
+    story.viewers.unshift({
+      userId: String(userId),
+      name: String(name),
+      username: String(username),
+      avatar: String(avatar),
+      viewedAt: Date.now(),
+    });
+    story.viewsCount = (story.viewsCount || 0) + 1;
+  }
+  if (userId === story.authorId) {
+    story.isSeen = true;
+  }
+  res.json({ success: true, story: formatStoryForViewer(story, String(userId)) });
+});
+
+// 14. Like Story
+app.post('/api/stories/:id/like', (req, res) => {
+  const { id } = req.params;
+  const { userId = 'user-me', name = 'Alex', username = 'alex_creator', avatar = '' } = req.body || {};
+  const story = serverStories.find((s) => s.id === id);
+  if (!story) return res.status(404).json({ error: 'Story not found.' });
+
+  story.likedByIds = story.likedByIds || [];
+  const hasLiked = story.likedByIds.includes(String(userId));
+  if (hasLiked) {
+    story.likedByIds = story.likedByIds.filter((uid: string) => uid !== String(userId));
+  } else {
+    story.likedByIds.push(String(userId));
+  }
+  story.likesCount = story.likedByIds.length;
+
+  story.viewers = story.viewers || [];
+  const v = story.viewers.find((entry: any) => entry.userId === userId);
+  if (v) {
+    v.liked = !hasLiked;
+  } else if (userId !== story.authorId) {
+    story.viewers.unshift({
+      userId: String(userId),
+      name: String(name),
+      username: String(username),
+      avatar: String(avatar),
+      viewedAt: Date.now(),
+      liked: !hasLiked,
+    });
+  }
+
+  res.json({ success: true, likesCount: story.likesCount, liked: !hasLiked, likedByIds: story.likedByIds });
+});
+
+// 15. React to Story
+app.post('/api/stories/:id/react', (req, res) => {
+  const { id } = req.params;
+  const { userId = 'user-me', emoji, name = 'Alex', username = 'alex_creator', avatar = '' } = req.body || {};
+  const story = serverStories.find((s) => s.id === id);
+  if (!story) return res.status(404).json({ error: 'Story not found.' });
+
+  story.reactions = story.reactions || [];
+  const existingIdx = story.reactions.findIndex((r: any) => r.userId === userId);
+  if (existingIdx >= 0) story.reactions[existingIdx].emoji = String(emoji);
+  else story.reactions.push({ userId: String(userId), emoji: String(emoji) });
+
+  story.viewers = story.viewers || [];
+  const v = story.viewers.find((entry: any) => entry.userId === userId);
+  if (v) v.reactedEmoji = String(emoji);
+  else if (userId !== story.authorId) {
+    story.viewers.unshift({
+      userId: String(userId),
+      name: String(name),
+      username: String(username),
+      avatar: String(avatar),
+      viewedAt: Date.now(),
+      reactedEmoji: String(emoji),
+    });
+  }
+  res.json({ success: true, reactions: story.reactions });
+});
+
+// 16. Vote on Story Poll (persisted vote breakdown)
+app.post('/api/stories/:id/poll', (req, res) => {
+  const { id } = req.params;
+  const { userId = 'user-me', option } = req.body || {};
+  const story = serverStories.find((s) => s.id === id);
+  if (!story || !story.poll) return res.status(404).json({ error: 'Story poll not found.' });
+  if (option !== 'A' && option !== 'B') return res.status(400).json({ error: 'Invalid option.' });
+
+  story.poll.voterVotes = story.poll.voterVotes || {};
+  const prevVote = story.poll.voterVotes[String(userId)];
+  if (prevVote !== option) {
+    if (prevVote === 'A') story.poll.votesA = Math.max(0, (story.poll.votesA || 0) - 1);
+    if (prevVote === 'B') story.poll.votesB = Math.max(0, (story.poll.votesB || 0) - 1);
+    if (option === 'A') story.poll.votesA = (story.poll.votesA || 0) + 1;
+    if (option === 'B') story.poll.votesB = (story.poll.votesB || 0) + 1;
+    story.poll.voterVotes[String(userId)] = option;
+  }
+  res.json({ success: true, poll: { ...story.poll, userVote: option } });
+});
+
+// 17. Answer Story Question Box
+app.post('/api/stories/:id/question', (req, res) => {
+  const { id } = req.params;
+  const { stickerId, userId = 'user-me', name = 'Alex', username = 'alex_creator', avatar = '', answer } = req.body || {};
+  const cleanAnswer = typeof answer === 'string' ? answer.trim().slice(0, 240) : '';
+  if (!cleanAnswer) return res.status(400).json({ error: 'Answer cannot be empty.' });
+
+  const story = serverStories.find((s) => s.id === id);
+  if (!story) return res.status(404).json({ error: 'Story not found.' });
+
+  const sticker = (story.stickers || []).find((st: any) => st.id === stickerId && st.type === 'question');
+  if (!sticker) return res.status(404).json({ error: 'Question sticker not found.' });
+
+  sticker.responses = sticker.responses || [];
+  sticker.responses.unshift({
+    id: `qres-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    userId: String(userId),
+    name: String(name),
+    username: String(username),
+    avatar: String(avatar),
+    answer: cleanAnswer,
+    createdAt: Date.now(),
+  });
+
+  res.json({ success: true, responses: sticker.responses });
+});
+
+// 18. Emoji Slider & Countdown Reminder
+app.post('/api/stories/:id/sticker-interact', (req, res) => {
+  const { id } = req.params;
+  const { stickerId, userId = 'user-me', sliderValue, toggleReminder } = req.body || {};
+  const story = serverStories.find((s) => s.id === id);
+  if (!story) return res.status(404).json({ error: 'Story not found.' });
+  const sticker = (story.stickers || []).find((st: any) => st.id === stickerId);
+  if (!sticker) return res.status(404).json({ error: 'Sticker not found.' });
+
+  if (sticker.type === 'slider' && typeof sliderValue === 'number') {
+    sticker.sliderValues = sticker.sliderValues || {};
+    sticker.sliderValues[String(userId)] = Math.max(0, Math.min(100, Math.round(sliderValue)));
+    return res.json({ success: true, sliderValues: sticker.sliderValues });
+  }
+
+  if (sticker.type === 'countdown' && toggleReminder) {
+    sticker.reminderUserIds = sticker.reminderUserIds || [];
+    const uid = String(userId);
+    if (sticker.reminderUserIds.includes(uid)) {
+      sticker.reminderUserIds = sticker.reminderUserIds.filter((x: string) => x !== uid);
+    } else {
+      sticker.reminderUserIds.push(uid);
+    }
+    return res.json({ success: true, reminderUserIds: sticker.reminderUserIds });
+  }
+
+  res.status(400).json({ error: 'Invalid sticker interaction.' });
+});
+
+// 19. Reply to Story -> Enforces replyPermission & routes into DM conversation
+app.post('/api/stories/:id/reply', (req, res) => {
+  const { id } = req.params;
+  const { senderId = 'user-me', senderName = 'Alex', senderUsername = 'alex_creator', senderAvatar = '', replyText } = req.body || {};
+  const cleanText = typeof replyText === 'string' ? replyText.trim().slice(0, 1000) : '';
+  if (!cleanText) return res.status(400).json({ error: 'Reply cannot be empty.' });
+
+  const story = serverStories.find((s) => s.id === id);
+  if (!story) return res.status(404).json({ error: 'Story not found.' });
+
+  const senderPriv = getOrCreateUserPrivacy(String(senderId));
+  const authorPriv = getOrCreateUserPrivacy(story.authorId);
+
+  if (senderPriv.blockedUserIds.includes(story.authorId) || authorPriv.blockedUserIds.includes(String(senderId))) {
+    return res.status(403).json({ error: 'You cannot reply to this story.' });
+  }
+  if (story.replyPermission === 'off') {
+    return res.status(403).json({ error: 'Replies are turned off for this story.' });
+  }
+  if (story.replyPermission === 'subscribers' && story.authorId !== senderId && !senderPriv.followingIds.includes(story.authorId)) {
+    return res.status(403).json({ error: 'Only subscribers can reply to this story.' });
+  }
+
+  let conv = serverConversations.find(
+    (c) => c.type === 'direct' && c.participants.some((p: any) => p.id === story.authorId)
+  );
+  if (!conv) {
+    const dir = serverUserDirectory.get(story.authorId);
+    conv = {
+      id: `conv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      type: 'direct',
+      participants: [
+        {
+          id: story.authorId,
+          name: story.authorName || dir?.name || 'Creator',
+          username: story.authorUsername || dir?.username || 'creator',
+          avatar: story.authorAvatar || dir?.avatar || '',
+          isVerified: story.authorVerified,
+          isOnline: isUserVisiblyOnline(story.authorId),
+        },
+      ],
+      unreadCount: 0,
+      isRequest: false,
+      messages: [],
+    };
+    serverConversations.unshift(conv);
+  }
+
+  const msg = {
+    id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    conversationId: conv.id,
+    senderId: String(senderId),
+    senderName: String(senderName),
+    senderUsername: String(senderUsername),
+    senderAvatar: String(senderAvatar),
+    text: cleanText,
+    timestamp: Date.now(),
+    status: 'sent',
+    storyReply: {
+      storyId: story.id,
+      thumbnailUrl: story.thumbnailUrl || story.mediaUrl,
+      authorName: story.authorName,
+      mediaType: story.mediaType,
+    },
+  };
+  conv.messages.push(msg);
+  conv.lastMessage = msg;
+
+  broadcastSocialEvent({ type: 'dm:message', conversationId: conv.id, message: msg });
+  res.json({ success: true, conversationId: conv.id, message: msg });
+});
+
+// 20. Story Archive & Highlights CRUD
+app.get('/api/stories/archive', (req, res) => {
+  const userId = String(req.query.userId || 'user-me');
+  const archived = serverStories
+    .filter((s) => s.authorId === userId && s.isArchived !== false)
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .map((s) => formatStoryForViewer(s, userId));
+  res.json({ success: true, archiveStories: archived });
+});
+
+app.post('/api/highlights', (req, res) => {
+  const { ownerId = 'user-me', title, coverImage, storyIds } = req.body || {};
+  const cleanTitle = typeof title === 'string' ? title.trim().slice(0, 40) : '';
+  if (!cleanTitle || !Array.isArray(storyIds) || storyIds.length === 0) {
+    return res.status(400).json({ error: 'Title and at least one story are required.' });
+  }
+  const firstStory = serverStories.find((s) => s.id === storyIds[0]);
+  const highlight = {
+    id: `hl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    ownerId: String(ownerId),
+    title: cleanTitle,
+    coverImage: coverImage || firstStory?.thumbnailUrl || firstStory?.mediaUrl || '',
+    storyIds: storyIds.map(String),
+    createdAt: Date.now(),
+  };
+  serverHighlights.unshift(highlight);
+  res.json({ success: true, highlight });
+});
+
+app.patch('/api/highlights/:id', (req, res) => {
+  const { id } = req.params;
+  const { ownerId = 'user-me', title, coverImage, storyIds } = req.body || {};
+  const hl = serverHighlights.find((h) => h.id === id);
+  if (!hl) return res.status(404).json({ error: 'Highlight not found.' });
+  if (hl.ownerId && hl.ownerId !== ownerId) return res.status(403).json({ error: 'Unauthorized.' });
+
+  if (typeof title === 'string' && title.trim()) hl.title = title.trim().slice(0, 40);
+  if (typeof coverImage === 'string' && coverImage.trim()) hl.coverImage = coverImage;
+  if (Array.isArray(storyIds) && storyIds.length > 0) hl.storyIds = storyIds.map(String);
+
+  res.json({ success: true, highlight: hl });
+});
+
+app.delete('/api/highlights/:id', (req, res) => {
+  const { id } = req.params;
+  const ownerId = String(req.query.userId || req.body?.userId || 'user-me');
+  const idx = serverHighlights.findIndex((h) => h.id === id);
+  if (idx === -1) return res.status(404).json({ error: 'Highlight not found.' });
+  if (serverHighlights[idx].ownerId && serverHighlights[idx].ownerId !== ownerId) {
+    return res.status(403).json({ error: 'Unauthorized.' });
+  }
+  serverHighlights.splice(idx, 1);
+  res.json({ success: true, deletedId: id });
+});
+
+// 21. Moderation Report endpoint (Messages & Stories)
+app.post('/api/reports', (req, res) => {
+  const { reporterId = 'user-me', targetType, targetId, reason, notes } = req.body || {};
+  if (!targetType || !targetId || !reason) {
+    return res.status(400).json({ error: 'targetType, targetId, and reason are required.' });
+  }
+  const report = {
+    id: `rep-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    reporterId: String(reporterId),
+    targetType: String(targetType),
+    targetId: String(targetId),
+    reason: String(reason),
+    notes: typeof notes === 'string' ? notes.slice(0, 500) : undefined,
+    createdAt: Date.now(),
+  };
+  serverReports.unshift(report);
+  if (targetType === 'story') {
+    if (!storyReportedByUser.has(String(reporterId))) {
+      storyReportedByUser.set(String(reporterId), new Set());
+    }
+    storyReportedByUser.get(String(reporterId))!.add(String(targetId));
+  }
+  res.json({ success: true, report });
+});
+
 // Server-Side In-Memory Fast Cache & Deduplication Map
 const serverTranslationCache = new Map<string, string>();
 const serverPendingRequests = new Map<string, Promise<string>>();
 
+const TRANSLATION_LANGUAGE_NAMES: Record<string, string> = {
+  en: 'English',
+  es: 'Spanish (Español)',
+  fr: 'French (Français)',
+  de: 'German (Deutsch)',
+  pt: 'Portuguese (Português)',
+  it: 'Italian (Italiano)',
+  ru: 'Russian (Русский)',
+  ja: 'Japanese (日本語)',
+  ko: 'Korean (한국어)',
+  zh: 'Simplified Chinese (简体中文)',
+  id: 'Indonesian (Bahasa Indonesia)',
+  th: 'Thai (ไทย)',
+  vi: 'Vietnamese (Tiếng Việt)',
+  tr: 'Turkish (Türkçe)',
+  ar: 'Arabic (العربية)',
+  hi: 'Hindi (हिन्दी)',
+  fil: 'Filipino / Tagalog',
+  pl: 'Polish (Polski)',
+  nl: 'Dutch (Nederlands)',
+  am: 'Amharic (አማርኛ)',
+  uk: 'Ukrainian (Українська)',
+  my: 'Burmese / Myanmar (မြန်မာဘာသာ)',
+};
+
 // Lazy Gemini Client with correct User-Agent header
 let geminiClient: GoogleGenAI | null = null;
 function getGeminiClient(): GoogleGenAI | null {
-  if (!process.env.GEMINI_API_KEY) return null;
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  if (!apiKey) return null;
   if (!geminiClient) {
     geminiClient = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY,
+      apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
     });
   }
   return geminiClient;
@@ -180,18 +1918,19 @@ function getGeminiClient(): GoogleGenAI | null {
 // Helper: Sleep for retries
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Translation endpoint (secure fast proxy for AI / Google Translation API)
+// Translation endpoint (real Gemini-backed translation service; zero mock dictionaries)
 app.post('/api/translate', async (req, res) => {
-  const { messageId, text, sourceLanguage, targetLanguage } = req.body;
-  if (!text || !targetLanguage) {
+  const { messageId, text, sourceLanguage, targetLanguage } = req.body || {};
+  if (typeof text !== 'string' || !text.trim() || typeof targetLanguage !== 'string' || !targetLanguage.trim()) {
     return res.status(400).json({ error: 'Text and targetLanguage are required.' });
   }
 
   const cleanText = text.trim();
+  const normalizedTarget = targetLanguage.trim().toLowerCase();
 
-  // Fast pre-detected source language script fallback if missing
-  let detectedSource = sourceLanguage;
-  if (!detectedSource) {
+  // Detect clear non-Latin script markers when sourceLanguage is auto or omitted
+  let detectedSource = typeof sourceLanguage === 'string' ? sourceLanguage.trim().toLowerCase() : 'auto';
+  if (!detectedSource || detectedSource === 'auto') {
     if (/[\uAC00-\uD7AF\u1100-\u11FF]/.test(cleanText)) detectedSource = 'ko';
     else if (/[\u3040-\u309F\u30A0-\u30FF]/.test(cleanText)) detectedSource = 'ja';
     else if (/[\u4E00-\u9FFF]/.test(cleanText)) detectedSource = 'zh';
@@ -200,36 +1939,29 @@ app.post('/api/translate', async (req, res) => {
     else if (/[\u0E00-\u0E7F]/.test(cleanText)) detectedSource = 'th';
     else if (/[\u1200-\u137F]/.test(cleanText)) detectedSource = 'am';
     else if (/[\u1000-\u109F\uAA60-\uAA7F]/.test(cleanText)) detectedSource = 'my';
-    else if (/[\u0400-\u04FF]/.test(cleanText)) detectedSource = 'ru';
-    else if (/[ğışİĞŞçÇöÖüÜ]/i.test(cleanText)) detectedSource = 'tr';
-    else if (/[äöüß]/i.test(cleanText)) detectedSource = 'de';
-    else if (/[éèêëàâçîïôùû]/i.test(cleanText)) detectedSource = 'fr';
-    else if (/[¿¡ñáéíóú]/i.test(cleanText)) detectedSource = 'es';
-    else if (/[ãõâêôáéíóúç]/i.test(cleanText)) detectedSource = 'pt';
-    else detectedSource = 'en';
+    else if (/[\u0400-\u04FF]/.test(cleanText)) detectedSource = /[іїєґ]/i.test(cleanText) ? 'uk' : 'ru';
+    else detectedSource = 'auto';
   }
 
-  // 1. Same source and target -> instant response
-  if (detectedSource.toLowerCase() === targetLanguage.toLowerCase()) {
+  // Only short-circuit immediately if detected non-Latin or explicit source equals target
+  if (detectedSource !== 'auto' && detectedSource === normalizedTarget) {
     return res.json({
       originalText: text,
       originalLanguage: detectedSource,
-      targetLanguage,
+      targetLanguage: normalizedTarget,
       translatedText: text,
       cached: true,
     });
   }
 
-  // Cache keys
-  const msgCacheKey = messageId ? `${messageId}:${targetLanguage}` : null;
-  const textCacheKey = `${cleanText.toLowerCase()}:${targetLanguage}`;
+  const msgCacheKey = messageId ? `${messageId}:${normalizedTarget}` : null;
+  const textCacheKey = `${cleanText.toLowerCase()}:${normalizedTarget}`;
 
-  // 2. ULTRA-FAST SERVER CACHE CHECK (<1ms)
   if (msgCacheKey && serverTranslationCache.has(msgCacheKey)) {
     return res.json({
       originalText: text,
       originalLanguage: detectedSource,
-      targetLanguage,
+      targetLanguage: normalizedTarget,
       translatedText: serverTranslationCache.get(msgCacheKey)!,
       cached: true,
     });
@@ -241,13 +1973,19 @@ app.post('/api/translate', async (req, res) => {
     return res.json({
       originalText: text,
       originalLanguage: detectedSource,
-      targetLanguage,
+      targetLanguage: normalizedTarget,
       translatedText: cachedVal,
       cached: true,
     });
   }
 
-  // 3. IN-FLIGHT SERVER DEDUPLICATION: If another client requested exact same translation, join that promise
+  const ai = getGeminiClient();
+  if (!ai) {
+    return res.status(503).json({
+      error: 'Translation service is not configured. Missing GEMINI_API_KEY.',
+    });
+  }
+
   const requestKey = msgCacheKey || textCacheKey;
   if (serverPendingRequests.has(requestKey)) {
     try {
@@ -255,270 +1993,203 @@ app.post('/api/translate', async (req, res) => {
       return res.json({
         originalText: text,
         originalLanguage: detectedSource,
-        targetLanguage,
+        targetLanguage: normalizedTarget,
         translatedText,
         cached: true,
       });
-    } catch {
-      // Proceed to fallback
+    } catch (err: any) {
+      return res.status(502).json({
+        error: err?.message || 'Translation failed. Please try again.',
+      });
     }
   }
 
-  // 4. PERFORM TRANSLATION TASK WITH MULTI-TIER RESILIENCE
   const translatePromise = (async (): Promise<string> => {
-    // Offline dictionary lookup for instant social and chat response
-    const mockTranslations: Record<string, Record<string, string>> = {
-      'thanks for the gift in the room earlier! ✨': {
-        en: 'Thanks for the gift in the room earlier! ✨',
-        ko: '아까 방에서 선물 고마워! ✨',
-        es: '¡Gracias por el regalo en la sala antes! ✨',
-        ru: 'Спасибо за подарок в комнате ранее! ✨',
-        fr: 'Merci pour le cadeau dans la salle tout à l’heure ! ✨',
-        de: 'Danke für das Geschenk im Raum vorhin! ✨',
-        ja: '先ほどはお部屋でのプレゼントありがとう！✨',
-        zh: '谢谢刚才在房间里送的礼物！✨',
-        ar: 'شكراً على الهدية في الغرفة سابقاً! ✨',
-      },
-      'are you joining table 128 tonight?': {
-        en: 'Are you joining Table 128 tonight?',
-        ko: '오늘 밤 128번 테이블에 올 거야?',
-        es: '¿Te unirás a la Mesa 128 esta noche?',
-        ru: 'Ты присоединишься к столу 128 сегодня вечером?',
-        fr: 'Tu rejoins la table 128 ce soir ?',
-        de: 'Kommst du heute Abend zu Tisch 128?',
-        ja: '今夜テーブル128に参加する？',
-        zh: '你今晚要加入128号房间吗？',
-        ar: 'هل ستنضم إلى الطاولة 128 الليلة؟',
-      },
-      'good game yesterday bro!': {
-        en: 'Good game yesterday bro!',
-        ko: '어제 게임 진짜 좋았어 형!',
-        es: '¡Buen juego ayer hermano!',
-        ru: 'Отличная игра вчера, бро!',
-        fr: 'Super partie hier frérot !',
-        de: 'Gutes Spiel gestern, Bro!',
-        ja: '昨日のゲーム最高だったよ！',
-        zh: '昨天玩得很棒，兄弟！',
-        ar: 'لعبة رائعة أمس يا أخي!',
-      },
-      'see you next time at the party! 💖': {
-        en: 'See you next time at the party! 💖',
-        ko: '다음 파티에서 또 봐! 💖',
-        es: '¡Nos vemos la próxima en la fiesta! 💖',
-        ru: 'Увидимся в следующий раз на вечеринке! 💖',
-        fr: 'À la prochaine à la fête ! 💖',
-        de: 'Bis zum nächsten Mal auf der Party! 💖',
-        ja: '次のパーティーでまた会おうね！💖',
-        zh: '下次聚会见！💖',
-        ar: 'أراك في المرة القادمة في الحفلة! 💖',
-      },
-      'yea': {
-        en: 'Yea',
-        ko: '응',
-        es: 'Sí',
-        ru: 'Да',
-        fr: 'Ouais',
-        de: 'Ja',
-        ja: 'うん',
-        zh: '嗯',
-        ar: 'نعم',
-      },
-      'hey tariq, see you at the table!': {
-        en: 'Hey Tariq, see you at the table!',
-        ko: '타릭 안녕, 테이블에서 봐!',
-        es: '¡Hola Tariq, nos vemos en la mesa!',
-        ru: 'Привет Тарик, увидимся за столом!',
-        fr: 'Salut Tariq, on se voit à la table !',
-        de: 'Hey Tariq, wir sehen uns am Tisch!',
-        ja: 'タリク、テーブルで会おう！',
-        zh: '嗨塔里克，牌桌见！',
-        ar: 'أهلاً طارق، أراك على الطاولة!',
-      },
-      'let us spin again later today! 🔥': {
-        en: 'Let us spin again later today! 🔥',
-        ko: '오늘 나중에 다시 룰렛 돌리자! 🔥',
-        es: '¡Giremos de nuevo más tarde hoy! 🔥',
-        ru: 'Давай покрутим ещё позже сегодня! 🔥',
-        fr: 'Faisons encore tourner la roue plus tard aujourd’hui ! 🔥',
-        de: 'Lass uns heute später noch mal drehen! 🔥',
-        ja: '今日またあとでスピンしよう！🔥',
-        zh: '今天晚点我们再转一次！🔥',
-        ar: 'دعنا نقوم بالتدوير مرة أخرى لاحقاً اليوم! 🔥',
-      },
-      'sent you the new master audio stems! check the synth lead track on 1:42 🎧': {
-        en: 'Sent you the new master audio stems! Check the synth lead track on 1:42 🎧',
-        ko: '새 마스터 오디오 스템 보냈어! 1:42 신스 리드 트랙 확인해봐 🎧',
-        es: '¡Te envié las nuevas pistas de audio master! Revisa la pista de sintetizador en 1:42 🎧',
-        ru: 'Отправил тебе новые аудиодорожки мастера! Проверь синтезаторный лид на 1:42 🎧',
-        fr: 'Je t’ai envoyé les nouvelles pistes audio master ! Écoute le synthé lead à 1:42 🎧',
-        de: 'Habe dir die neuen Master-Audiospuren geschickt! Hör dir die Synth-Lead-Spur bei 1:42 an 🎧',
-        ja: '新しいマスターオーディオのステムを送ったよ！1:42のシンセリードをチェックしてみて 🎧',
-        zh: '已发给你新的母带音频分轨！查看 1:42 处的主音合成器音轨 🎧',
-        ar: 'أرسلت لك مسارات الصوت الرئيسية الجديدة! تحقق من مسار السينث في 1:42 🎧',
-      },
-      'hey elena! loved your studio story preview today. that bassline sounds monstrous!': {
-        en: 'Hey Elena! Loved your studio story preview today. That bassline sounds monstrous!',
-        ko: '엘레나 안녕! 오늘 스튜디오 스토리 미리보기 너무 좋았어. 베이스라인 진짜 대박이야!',
-        es: '¡Hola Elena! Me encantó la vista previa de tu historia en el estudio. ¡Esa línea de bajo suena monstruosa!',
-        ru: 'Привет, Елена! Очень понравился тизер из студии. Этот бас звучит просто невероятно!',
-        fr: 'Salut Elena ! J’ai adoré ton aperçu en studio aujourd’hui. Cette ligne de basse est monstrueuse !',
-        de: 'Hey Elena! Dein Studio-Story-Preview heute war spitze. Die Bassline klingt gewaltig!',
-        ja: 'エレナこんにちは！今日のスタジオのストーリープレビュー最高だった。ベースラインがすごい！',
-        zh: '嗨埃琳娜！很喜欢你今天录音室的故事预览。那个低音太炸了！',
-        ar: 'أهلاً إيلينا! أعجبتني قصة الاستوديو اليوم. خط الباس مذهل للغاية!',
-      },
-      'thank you alex! we spent 4 hours routing the tape delay pedals. totally worth it 😊': {
-        en: 'Thank you Alex! We spent 4 hours routing the tape delay pedals. Totally worth it 😊',
-        ko: '고마워 알렉스! 테이프 딜레이 페달 라우팅하느라 4시간 썼는데 완전 그럴 가치가 있었어 😊',
-        es: '¡Gracias Alex! Pasamos 4 horas enrutando los pedales de eco de cinta. Valió totalmente la pena 😊',
-        ru: 'Спасибо, Алекс! Мы потратили 4 часа на коммутацию ленточных дилеев. Оно того стоило 😊',
-        fr: 'Merci Alex ! On a passé 4 heures à router les pédales de délai à bande. Ça valait vraiment le coup 😊',
-        de: 'Danke Alex! Wir haben 4 Stunden mit den Tape-Delay-Pedalen verbracht. Hat sich total gelohnt 😊',
-        ja: 'ありがとうアレックス！テープディレイペダルの配線に4時間かかったけど、それだけの価値があったよ 😊',
-        zh: '谢谢亚历克斯！我们花了4个小时接磁带延迟效果器，完全值了 😊',
-        ar: 'شكراً أليكس! قضينا 4 ساعات في توصيل دواسات التأخير. كان الأمر يستحق تماماً 😊',
-      },
-      'are you going to showcase it during the live set this weekend?': {
-        en: 'Are you going to showcase it during the live set this weekend?',
-        ko: '이번 주말 라이브 세트에서 공개할 거야?',
-        es: '¿Vas a presentarlo durante el set en vivo este fin de semana?',
-        ru: 'Ты покажешь это во время живого выступления в эти выходные?',
-        fr: 'Tu vas le jouer pendant le live ce week-end ?',
-        de: 'Wirst du es dieses Wochenende während des Live-Sets präsentieren?',
-        ja: '今週末のライブセットで披露する予定？',
-        zh: '你这周末的现场演出会展示它吗？',
-        ar: 'هل ستقديم خلال العرض المباشر في نهاية هذا الأسبوع؟',
-      },
-      'would love your feedback on the 3d typography layout for enmmoe creator summit! 🎨': {
-        en: 'Would love your feedback on the 3D typography layout for enmmoe Creator Summit! 🎨',
-        ko: 'enmmoe 크리에이터 서밋 3D 타이포그래피 레이아웃 피드백 주면 좋겠어! 🎨',
-        es: '¡Me encantaría recibir tus comentarios sobre el diseño de tipografía 3D para enmmoe Creator Summit! 🎨',
-        ru: 'Буду рада услышать твой отзыв о 3D-типографике для enmmoe Creator Summit! 🎨',
-        fr: 'J’aimerais beaucoup avoir ton retour sur la typographie 3D pour le Sommet des Créateurs enmmoe ! 🎨',
-        de: 'Würde mich über dein Feedback zum 3D-Typografie-Layout für den enmmoe Creator Summit freuen! 🎨',
-        ja: 'enmmoe Creator Summitの3Dタイポグラフィレイアウトのフィードバックをもらえると嬉しいな！🎨',
-        zh: '很想听听你对 enmmoe 创作者峰会 3D 字体排版设计的反馈！🎨',
-        ar: 'أود الحصول على رأيك حول تخطيط الطباعة ثلاثية الأبعاد لقمة مبدعي enmmoe! 🎨',
-      },
-      'hey chloe, the glass refraction render is unbelievable!': {
-        en: 'Hey Chloe, the glass refraction render is unbelievable!',
-        ko: '클로이 안녕, 유리 굴절 렌더링 진짜 믿기지 않을 정도로 멋져!',
-        es: '¡Hola Chloe, el render de refracción de vidrio es increíble!',
-        ru: 'Привет, Хлоя! Рендер преломления стекла просто невероятный!',
-        fr: 'Salut Chloe, le rendu de réfraction de verre est incroyable !',
-        de: 'Hey Chloe, der Glasbrechungs-Render ist unglaublich!',
-        ja: 'クロエ、ガラスの屈折レンダリングが信じられないくらい素晴らしいよ！',
-        zh: '嗨克洛伊，玻璃折射渲染效果太不可思议了！',
-        ar: 'أهلاً كلوي، رندر انكسار الزجاج مذهل لا يصدق!',
-      },
-      'hello': {
-        en: 'Hello',
-        ko: '안녕하세요',
-        es: 'Hola',
-        fr: 'Bonjour',
-        de: 'Hallo',
-        ru: 'Привет',
-        ja: 'こんにちは',
-        zh: '你好',
-        ar: 'مرحباً',
-      },
-      'hi': {
-        en: 'Hi',
-        ko: '안녕',
-        es: 'Hola',
-        fr: 'Salut',
-        de: 'Hallo',
-        ru: 'Привет',
-        ja: 'やあ',
-        zh: '嗨',
-        ar: 'مرحباً',
-      },
-    };
+    const targetLangName = TRANSLATION_LANGUAGE_NAMES[normalizedTarget] || normalizedTarget;
+    const sourceHint =
+      detectedSource !== 'auto' && TRANSLATION_LANGUAGE_NAMES[detectedSource]
+        ? ` from ${TRANSLATION_LANGUAGE_NAMES[detectedSource]}`
+        : '';
 
-    const directMatch = mockTranslations[cleanText.toLowerCase()]?.[targetLanguage];
-    if (directMatch) {
-      return directMatch;
-    }
+    const prompt = `Translate the following chat message${sourceHint} naturally into ${targetLangName}. Preserve all emojis, @mentions, numbers, URLs, and casual tone. If the message is already in ${targetLangName}, return it in natural ${targetLangName}. Output ONLY the translated message text with no surrounding quotes or explanations.\n\nMessage:\n${cleanText}`;
 
-    const ai = getGeminiClient();
-    if (ai) {
-      const targetLangName =
-        targetLanguage === 'ko'
-          ? 'Korean (한국어)'
-          : targetLanguage === 'en'
-          ? 'English'
-          : targetLanguage === 'es'
-          ? 'Spanish'
-          : targetLanguage === 'fr'
-          ? 'French'
-          : targetLanguage === 'de'
-          ? 'German'
-          : targetLanguage === 'ru'
-          ? 'Russian'
-          : targetLanguage === 'ja'
-          ? 'Japanese'
-          : targetLanguage === 'zh'
-          ? 'Simplified Chinese'
-          : targetLanguage === 'ar'
-          ? 'Arabic'
-          : targetLanguage;
+    const modelsToTry = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'];
+    let lastError: unknown = null;
 
-      const prompt = `Translate the following chat message into ${targetLangName}. Preserve all emojis, numbers, and casual punctuation. Output ONLY the translated text without quotes or explanations:\n"${cleanText}"`;
+    for (const modelName of modelsToTry) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const response = await ai.models.generateContent({
+            model: modelName,
+            contents: prompt,
+          });
 
-      const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash'];
-
-      for (const modelName of modelsToTry) {
-        for (let attempt = 0; attempt < 2; attempt++) {
-          try {
-            const response = await ai.models.generateContent({
-              model: modelName,
-              contents: prompt,
-            });
-
-            if (response.text && response.text.trim()) {
-              return response.text.trim().replace(/^["']|["']$/g, '');
-            }
-          } catch (err: any) {
-            const isDemandError = err?.status === 'UNAVAILABLE' || err?.message?.includes('high demand') || err?.message?.includes('503');
-            if (isDemandError && attempt === 0) {
-              await sleep(400);
-              continue;
-            }
-            break;
+          const out = response.text?.trim();
+          if (out) {
+            return out.replace(/^["“]|["”]$/g, '').trim();
           }
+          lastError = new Error('Empty translation response from model.');
+        } catch (err: any) {
+          lastError = err;
+          const msg = String(err?.message || '');
+          const isTransient =
+            err?.status === 'UNAVAILABLE' ||
+            err?.status === 503 ||
+            err?.status === 429 ||
+            msg.includes('503') ||
+            msg.includes('high demand');
+          if (isTransient && attempt === 0) {
+            await sleep(450);
+            continue;
+          }
+          break;
         }
       }
     }
 
-    // Graceful fallback to target language text
-    return cleanText;
+    throw lastError instanceof Error
+      ? lastError
+      : new Error('Translation service unavailable.');
   })();
 
   serverPendingRequests.set(requestKey, translatePromise);
 
   try {
     const translatedText = await translatePromise;
-    // Save in server cache
     if (msgCacheKey) serverTranslationCache.set(msgCacheKey, translatedText);
     serverTranslationCache.set(textCacheKey, translatedText);
 
     return res.json({
       originalText: text,
       originalLanguage: detectedSource,
-      targetLanguage,
+      targetLanguage: normalizedTarget,
       translatedText,
       cached: false,
     });
-  } catch (err) {
-    return res.json({
-      originalText: text,
-      originalLanguage: detectedSource,
-      targetLanguage,
-      translatedText: text,
-      cached: false,
+  } catch (err: any) {
+    console.error('[translate] upstream error:', err?.message || err);
+    return res.status(502).json({
+      error: 'Translation failed. Please try again.',
     });
   } finally {
     serverPendingRequests.delete(requestKey);
+  }
+});
+
+// ================= ENMMOE 2D WEBTOON GAME IMAGE GENERATION API =================
+
+const ALLOWED_GAME_ASPECT_RATIOS = new Set(['1:1', '3:4', '4:3', '9:16', '16:9']);
+const ALLOWED_REF_MIMES = new Set(['image/png', 'image/jpeg', 'image/webp']);
+
+app.get('/api/game/image-status', (_req, res) => {
+  const hasKey = Boolean(process.env.GEMINI_API_KEY?.trim());
+  res.json({
+    available: hasKey,
+    model: 'gemini-3.1-flash-lite-image',
+    reason: hasKey
+      ? 'Server API key detected; image generation can be requested manually.'
+      : 'No Gemini image API key configured on server. Using illustrated 2D webtoon engine & IndexedDB cache.',
+  });
+});
+
+app.post('/api/game/generate-image', async (req, res) => {
+  const {
+    assetId,
+    prompt,
+    aspectRatio = '3:4',
+    referenceImageDataUrl,
+  } = req.body || {};
+
+  if (typeof assetId !== 'string' || !assetId.trim() || assetId.length > 160) {
+    return res.status(400).json({ error: 'Valid assetId is required.' });
+  }
+  if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 2000) {
+    return res.status(400).json({ error: 'Valid illustration prompt is required.' });
+  }
+
+  const cleanAspect = ALLOWED_GAME_ASPECT_RATIOS.has(aspectRatio) ? aspectRatio : '3:4';
+  const ai = getGeminiClient();
+  if (!ai) {
+    return res.status(503).json({
+      available: false,
+      error:
+        'Gemini image generation is unavailable because no API key is configured in Settings > Secrets.',
+    });
+  }
+
+  try {
+    const parts: Array<
+      | { text: string }
+      | { inlineData: { data: string; mimeType: string } }
+    > = [];
+
+    if (typeof referenceImageDataUrl === 'string' && referenceImageDataUrl.startsWith('data:')) {
+      const match = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(
+        referenceImageDataUrl.trim()
+      );
+      if (match && ALLOWED_REF_MIMES.has(match[1]) && match[2].length < 8_000_000) {
+        parts.push({
+          inlineData: {
+            mimeType: match[1],
+            data: match[2],
+          },
+        });
+      }
+    }
+
+    parts.push({
+      text: `Korean romance/comedy webtoon illustration style, clean fine ink line art, soft pastel color palette, warm cinematic Seoul lighting, smooth cel shading, expressive eyes, consistent proportions. ${prompt.trim()}`,
+    });
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.1-flash-lite-image',
+      contents: { parts },
+      config: {
+        imageConfig: {
+          aspectRatio: cleanAspect,
+        },
+      },
+    });
+
+    let generatedDataUrl: string | null = null;
+    for (const part of response.candidates?.[0]?.content?.parts ?? []) {
+      if (part.inlineData?.data) {
+        const mime = part.inlineData.mimeType || 'image/png';
+        generatedDataUrl = `data:${mime};base64,${part.inlineData.data}`;
+        break;
+      }
+    }
+
+    if (!generatedDataUrl) {
+      return res.status(502).json({
+        available: false,
+        error: 'Image model returned no image bytes. Please retry or use local webtoon illustration mode.',
+      });
+    }
+
+    return res.json({
+      available: true,
+      assetId: assetId.trim(),
+      dataUrl: generatedDataUrl,
+      source: 'gemini',
+    });
+  } catch (err: any) {
+    const status = typeof err?.status === 'number' ? err.status : 502;
+    const message = String(err?.message || 'Gemini image generation unavailable.');
+    const isQuotaOrBilling =
+      status === 429 ||
+      status === 403 ||
+      status === 400 ||
+      message.includes('RESOURCE_EXHAUSTED') ||
+      message.includes('PERMISSION_DENIED') ||
+      message.includes('limit: 0');
+
+    return res.status(status >= 400 && status < 600 ? status : 502).json({
+      available: false,
+      error: isQuotaOrBilling
+        ? 'Gemini image generation requires a billing-enabled API key in Settings > Secrets. Illustrated 2D Korean webtoon mode and IndexedDB caching remain fully active.'
+        : 'Gemini image service could not complete this request right now. Tap Retry to try again.',
+    });
   }
 });
 
@@ -895,6 +2566,40 @@ wss.on('connection', (ws) => {
             client.send(JSON.stringify(data));
           }
         });
+      } else if (data.type === 'social:identify') {
+        const uid = String(data.userId || 'user-me');
+        socketUserIds.set(ws, uid);
+        if (!onlineUserSockets.has(uid)) {
+          onlineUserSockets.set(uid, new Set());
+        }
+        onlineUserSockets.get(uid)!.add(ws);
+        const priv = getOrCreateUserPrivacy(uid);
+        if (typeof data.showActivityStatus === 'boolean') priv.showActivityStatus = data.showActivityStatus;
+        if (typeof data.readReceiptsEnabled === 'boolean') priv.readReceiptsEnabled = data.readReceiptsEnabled;
+        if (typeof data.typingIndicatorsEnabled === 'boolean') priv.typingIndicatorsEnabled = data.typingIndicatorsEnabled;
+
+        broadcastSocialEvent({
+          type: 'dm:presence',
+          onlineUserIds: getVisibleOnlineUserIds(),
+        });
+      } else if (data.type === 'dm:typing') {
+        const senderId = String(data.userId || socketUserIds.get(ws) || 'user-me');
+        const priv = getOrCreateUserPrivacy(senderId);
+        if (!priv.typingIndicatorsEnabled) return;
+        const conv = serverConversations.find((c) => c.id === data.conversationId);
+        if (!conv) return;
+        const isTyping = Boolean(data.isTyping);
+        conv.isTyping = isTyping;
+        conv.typingUserId = isTyping ? senderId : undefined;
+        conv.typingUserName = isTyping ? String(data.userName || 'Someone') : undefined;
+
+        broadcastSocialEvent({
+          type: 'dm:typing',
+          conversationId: conv.id,
+          userId: senderId,
+          userName: String(data.userName || 'Someone'),
+          isTyping,
+        });
       }
     } catch {
       // Ignore invalid socket payloads
@@ -903,6 +2608,21 @@ wss.on('connection', (ws) => {
 
   ws.on('close', () => {
     clientRooms.delete(ws);
+    const uid = socketUserIds.get(ws);
+    if (uid) {
+      socketUserIds.delete(ws);
+      const set = onlineUserSockets.get(uid);
+      if (set) {
+        set.delete(ws);
+        if (set.size === 0) {
+          onlineUserSockets.delete(uid);
+        }
+      }
+      broadcastSocialEvent({
+        type: 'dm:presence',
+        onlineUserIds: getVisibleOnlineUserIds(),
+      });
+    }
   });
 });
 

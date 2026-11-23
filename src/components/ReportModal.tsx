@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Check } from 'lucide-react';
 import { BottomSheet, Button, useToast } from './ui';
+import { useLanguage } from '../utils/i18n';
 
 interface ReportModalProps {
   isOpen: boolean;
@@ -17,19 +18,20 @@ const REASONS = [
 ];
 
 export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose }) => {
+  const { t } = useLanguage();
   const { showToast } = useToast();
   const [selectedReason, setSelectedReason] = useState<string>('spam');
   const [extraDetails, setExtraDetails] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    showToast('Report submitted for review', { type: 'success' });
+    showToast(t('report_submitted', 'Report submitted for review'), { type: 'success' });
     setExtraDetails('');
     onClose();
   };
 
   return (
-    <BottomSheet isOpen={isOpen} onClose={onClose} title="Report Content">
+    <BottomSheet isOpen={isOpen} onClose={onClose} title={t('report', 'Report Content')}>
       <form onSubmit={handleSubmit} className="px-4 py-3 space-y-4">
         <p className="text-[15px] text-[#8E8E93]">
           Select a reason why you are reporting this content:
@@ -69,10 +71,10 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose }) => 
 
         <div className="flex items-center gap-2.5 pt-1">
           <Button type="button" variant="secondary" size="md" className="flex-1" onClick={onClose}>
-            Cancel
+            {t('cancel', 'Cancel')}
           </Button>
           <Button type="submit" variant="destructive" size="md" className="flex-1">
-            Submit Report
+            {t('submit_report', 'Submit Report')}
           </Button>
         </div>
       </form>

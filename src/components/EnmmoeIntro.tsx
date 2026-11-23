@@ -39,9 +39,7 @@ export const EnmmoeIntro: React.FC<EnmmoeIntroProps> = ({ onFinished }) => {
           animate={{ opacity: fadingOut ? 0 : 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: prefersReducedMotion ? 0.18 : 0.32, ease: [0.16, 1, 0.3, 1] }}
-          className={`fixed inset-0 z-[100] flex items-center justify-center bg-white dark:bg-black select-none ${
-            fadingOut ? 'pointer-events-none' : ''
-          }`}
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-white dark:bg-black select-none pointer-events-none"
           aria-hidden="true"
         >
           <motion.div
